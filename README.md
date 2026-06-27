@@ -26,8 +26,9 @@
 | <img width="1400" height="729" alt="截屏2026-06-27 14 41 32" src="https://github.com/user-attachments/assets/5711fb93-5b19-407c-a0bc-e8375b509cbe" /> | <img width="1440" height="685" alt="image" src="https://github.com/user-attachments/assets/495f8c9d-cd9a-420e-87f6-2eec5b5e29dd" /> |
 | 支持飞书、企业微信等多种功能渠道 | 支持用量统计 |
 | <img width="1400" height="729" alt="截屏2026-06-27 14 42 32" src="https://github.com/user-attachments/assets/e9510352-1fbf-4afa-97f5-458b34ef668a" /> | <img width="1440" height="792" alt="截屏2026-06-27 14 42 15" src="https://github.com/user-attachments/assets/3299fd0e-8299-42ec-95ed-f1e8580c0cec" /> |
-| 智能体动态配置 | 整体安全防控架构 |
-| <img width="1200" height="729" alt="截屏2026-06-27 14 41 53" src="https://github.com/user-attachments/assets/2ffaf3aa-b9c1-495e-bc5c-bb31fac4b57f" /> | <img width="300" height="500" alt="image" src="https://github.com/user-attachments/assets/0d40572b-50e5-4f5a-9a97-937afc1a26fa" /> |
+| 智能体动态配置 | 中间产物在线打开渲染 |
+| <img width="1200" height="729" alt="截屏2026-06-27 14 41 53" src="https://github.com/user-attachments/assets/2ffaf3aa-b9c1-495e-bc5c-bb31fac4b57f" /> | <img width="300" height="500" alt="image" src="<img width="1908" height="957" alt="企业微信20260627-153944@2x" src="https://github.com/user-attachments/assets/e6b37e15-0aa3-475f-a1d2-06aa9cfeff0a" />
+" /> |
 
 ## 一、功能总览
 
