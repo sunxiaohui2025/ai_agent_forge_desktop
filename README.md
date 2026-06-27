@@ -18,20 +18,16 @@
 - **多渠道桥接**：飞书长连接（[lark-oapi](https://github.com/larksuite/oapi-sdk-python)，仅需 App ID/Secret，无需公网回调）、企业微信加密回调（自建应用，可在企业微信 App 里直接对话）
 
 ---
-## 系统预览图：
-| 图片1 | 图片2 |
+## 系统预览图
+| 权限三级管控授权 | 支持技能和CLI连接 |
 | :---: | :---: |
-| 权限三级管控授权<img width="1400" height="729" alt="截屏2026-05-15 11 58 47" src="<img width="1915" height="961" alt="权限管控@2x" src="https://github.com/user-attachments/assets/c95411d8-29ee-48d8-9248-90007cf4d78d" />| 支持技能和CLI连接<img width="1440" height="727" alt="截屏2026-05-15 12 00 05" src="<img width="1908" height="964" alt="截屏2026-06-27 14 41 01" src="https://github.com/user-attachments/assets/8ee7312d-25bc-46ce-b9d0-41f37fa973eb" />
-| 支持skills\mcp\cli <img width="1400" height="729" alt="<img width="1910" height="969" alt="截屏2026-06-27 14 41 32" src="https://github.com/user-attachments/assets/5711fb93-5b19-407c-a0bc-e8375b509cbe" />
-| 首页对话-支持本地文件工作目录 <img width="1440" height="685" alt="截屏2026-05-15 12 09 10" src="<img width="1916" height="968" alt="image" src="https://github.com/user-attachments/assets/495f8c9d-cd9a-420e-87f6-2eec5b5e29dd" />
-|
-| 支持飞书、企业微信等多种功能渠道<img width="1400" height="729" alt="截屏2026-05-15 12 34 58" src="<img width="1915" height="958" alt="截屏2026-06-27 14 42 32" src="https://github.com/user-attachments/assets/e9510352-1fbf-4afa-97f5-458b34ef668a" />
-| 支持用量统计<img width="1440" height="792" alt="截屏2026-05-15 12 11 54" src="<img width="1912" height="963" alt="截屏2026-06-27 14 42 15" src="https://github.com/user-attachments/assets/3299fd0e-8299-42ec-95ed-f1e8580c0cec" />
-|
-| 智能体动态配置<img width="1200" height="729" alt="截屏2026-05-15 12 31 49" src="<img width="1914" height="965" alt="截屏2026-06-27 14 41 53" src="https://github.com/user-attachments/assets/2ffaf3aa-b9c1-495e-bc5c-bb31fac4b57f" />
-| 整体安全防控架构<img width="300" height="500" alt="image" src="https://github.com/user-attachments/assets/0d40572b-50e5-4f5a-9a97-937afc1a26fa" />
-
-
+| <img width="1400" height="729" alt="权限管控@2x" src="https://github.com/user-attachments/assets/c95411d8-29ee-48d8-9248-90007cf4d78d" /> | <img width="1440" height="727" alt="截屏2026-06-27 14 41 01" src="https://github.com/user-attachments/assets/8ee7312d-25bc-46ce-b9d0-41f37fa973eb" /> |
+| 支持skills/mcp/cli | 首页对话-支持本地文件工作目录 |
+| <img width="1400" height="729" alt="截屏2026-06-27 14 41 32" src="https://github.com/user-attachments/assets/5711fb93-5b19-407c-a0bc-e8375b509cbe" /> | <img width="1440" height="685" alt="image" src="https://github.com/user-attachments/assets/495f8c9d-cd9a-420e-87f6-2eec5b5e29dd" /> |
+| 支持飞书、企业微信等多种功能渠道 | 支持用量统计 |
+| <img width="1400" height="729" alt="截屏2026-06-27 14 42 32" src="https://github.com/user-attachments/assets/e9510352-1fbf-4afa-97f5-458b34ef668a" /> | <img width="1440" height="792" alt="截屏2026-06-27 14 42 15" src="https://github.com/user-attachments/assets/3299fd0e-8299-42ec-95ed-f1e8580c0cec" /> |
+| 智能体动态配置 | 整体安全防控架构 |
+| <img width="1200" height="729" alt="截屏2026-06-27 14 41 53" src="https://github.com/user-attachments/assets/2ffaf3aa-b9c1-495e-bc5c-bb31fac4b57f" /> | <img width="300" height="500" alt="image" src="https://github.com/user-attachments/assets/0d40572b-50e5-4f5a-9a97-937afc1a26fa" /> |
 
 ## 一、功能总览
 
