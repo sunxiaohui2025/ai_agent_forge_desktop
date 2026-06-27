@@ -1,0 +1,46 @@
+# 根目录部署配置（含真实密码，绝不提交）
+.env
+
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.env
+backend/.env.local
+# 任何 .env 变体 / 备份都含真实密钥，绝不入库（仅放行示例文件）
+backend/.env.*
+!backend/.env.example
+backend/*.egg-info/
+backend/.venv/
+backend/.pytest_cache/
+backend/build/
+backend/dist/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+
+# IDE local-history snapshots (VS Code "Local History" extension).
+# Not meant for version control — they often contain intermediate/secret values.
+.history/
+.vscode/
+.idea/
+desktop/*
+
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/skills/*
+!storage/skills/.gitkeep
+storage/outputs/*
+.DS_Store
+*.log
+
+# Generic secrets safety net
+*.pem
+*.key
+*.bak
+secrets.json
+.secrets/
+# 本地 SQLite 数据库（含加密后的模型/MinerU/桥接密钥，绝不入库）
+*.db
+*.sqlite
+*.sqlite3

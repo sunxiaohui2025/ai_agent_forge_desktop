@@ -1,0 +1,264 @@
+/* ============================================================================
+ * H3C Agent — Desktop Workbench Design System
+ * Tool-grade / IDE / agent command center. Neutral, low-saturation, structural.
+ * - Charcoal monochrome primary (no brand gradient)
+ * - Borders & dividers define hierarchy (not heavy shadows)
+ * - Small radii, tight spacing, desktop information density
+ * - UI font (sans) vs code font (mono) strictly separated
+ * - Status color ONLY for run states (running / success / waiting / risk / fail)
+ * ==========================================================================*/
+
+:root {
+  /* ── Surfaces (neutral, layered) ── */
+  --m-bg:            #f7f7f4;   /* app chrome base */
+  --m-bg-soft:       #f2f2ef;   /* rails / sidebars */
+  --m-surface:       #ffffff;
+  --m-surface-variant:#ecece8;  /* hover / secondary fill */
+  --m-surface-sunken:#f6f6f2;   /* inset panels, code wells */
+  --m-surface-glass: rgba(250, 250, 247, .78);
+
+  /* ── Text ── */
+  --m-text:          #1c1c1a;
+  --m-text-secondary:#56554e;
+  --m-text-tertiary: #8a897f;
+
+  /* ── Borders (visible, structural) ── */
+  --m-border:        #eeeeeb;
+  --m-border-strong: #ddddda;
+
+  /* ── Primary = charcoal, monochrome ── */
+  --m-primary:       #232321;
+  --m-primary-hover: #000000;
+  --m-primary-soft:  #efefec;   /* subtle selection, NOT a brand tint */
+  --m-on-primary:    #ffffff;
+
+  /* ── Status colors — reserved for run states only ── */
+  --m-running:        #3a6fb0;  --m-running-bg:  #eef3f9;  --m-running-bd:  #c9dbef;
+  --m-success:        #2f8a52;  --m-success-bg:  #ebf5ee;  --m-success-bd:  #c2e2cd;
+  --m-warning:        #a8741a;  --m-warning-bg:  #f8f1e3;  --m-warning-bd:  #e8d4ac;
+  --m-danger:         #b5392f;  --m-danger-bg:   #f8ebe9;  --m-danger-bd:   #ecc6c1;
+  --m-waiting:        #7a6cae;  --m-waiting-bg:  #f1eff8;  --m-waiting-bd:  #d6cfe8;
+
+  /* ── Radii — small, crisp ── */
+  --m-radius-sm: 5px;
+  --m-radius:    8px;
+  --m-radius-lg: 12px;
+  --m-radius-xl: 16px;
+  --m-radius-pill: 6px;   /* squared off — no pill buttons in a tool UI */
+
+  /* ── Elevation — minimal; structure via borders ── */
+  --m-shadow-1: 0 1px 2px rgba(0,0,0,.04);
+  --m-shadow-2: 0 14px 42px -22px rgba(0,0,0,.22), 0 3px 10px -6px rgba(0,0,0,.12);
+  --m-shadow-3: 0 18px 55px -18px rgba(0,0,0,.18), 0 8px 22px -14px rgba(0,0,0,.16);
+  --m-shadow-ring: 0 0 0 1px rgba(28,28,26,.06), 0 20px 60px -34px rgba(28,28,26,.32);
+
+  /* ── Fonts ── */
+  --m-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter',
+               'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --m-font-mono: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', ui-monospace,
+                 Menlo, Consolas, monospace;
+
+  /* ── Terminal / code wells ── */
+  --m-terminal-bg: #1b1b19;
+  --m-terminal-fg: #d8d7cf;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: var(--m-font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+button, a, input, textarea, select, label,
+[role="button"],
+.el-button,
+.el-input,
+.el-textarea,
+.el-select,
+.el-dropdown,
+.el-switch,
+.el-slider,
+.el-tabs,
+.el-menu,
+.el-dialog,
+.el-overlay {
+  -webkit-app-region: no-drag;
+}
+
+code, pre, .mono { font-family: var(--m-font-mono); font-size: 12px; }
+
+/* ============================ Element Plus overrides ====================== */
+/* Buttons: squared, tool-grade, no pill, no shadow */
+.el-button {
+  border-radius: var(--m-radius) !important;
+  font-weight: 500;
+  font-size: 13px;
+}
+.el-button--primary {
+  background: var(--m-primary) !important;
+  border-color: var(--m-primary) !important;
+  box-shadow: none !important;
+}
+.el-button--primary:hover { background: var(--m-primary-hover) !important; border-color: var(--m-primary-hover) !important; }
+.el-button.is-text { border-radius: var(--m-radius-sm) !important; }
+.el-button--small { font-size: 12px; }
+
+/* Cards: flat, bordered */
+.el-card {
+  border-radius: var(--m-radius-lg) !important;
+  border: 1px solid var(--m-border) !important;
+  box-shadow: none !important;
+}
+
+/* Inputs: inset border, sunken fill */
+.el-input__wrapper, .el-textarea__inner, .el-select__wrapper {
+  border-radius: var(--m-radius) !important;
+  box-shadow: 0 0 0 1px var(--m-border) inset !important;
+  background: var(--m-surface) !important;
+  font-size: 13px;
+}
+.el-input__wrapper:hover, .el-textarea__inner:hover { box-shadow: 0 0 0 1px var(--m-border-strong) inset !important; }
+.el-input__wrapper.is-focus, .el-textarea__inner:focus, .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1.5px var(--m-primary) inset !important;
+  background: var(--m-surface) !important;
+}
+
+/* Tables: flat, ruled rows, mono-ish density */
+.el-table {
+  --el-table-border-color: var(--m-border);
+  border-radius: var(--m-radius-lg) !important;
+  border: 1px solid var(--m-border) !important;
+  overflow: hidden;
+  background: var(--m-surface) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+}
+.el-table th.el-table__cell {
+  background: var(--m-bg-soft) !important;
+  color: var(--m-text-secondary) !important;
+  font-weight: 600 !important;
+  font-size: 12px;
+  border-bottom: 1px solid var(--m-border) !important;
+}
+.el-table td.el-table__cell { border-bottom: 1px solid var(--m-border) !important; }
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell { background: var(--m-bg-soft) !important; }
+.el-table::before, .el-table::after { display: none !important; }
+
+/* Dialogs: crisp corners */
+.el-dialog { border-radius: var(--m-radius-lg) !important; overflow: hidden; box-shadow: var(--m-shadow-3) !important; }
+.el-dialog__header { padding: 16px 20px 0 !important; }
+.el-dialog__title { font-size: 14px !important; font-weight: 600 !important; }
+.el-dialog__body { padding: 14px 20px !important; font-size: 13px; }
+.el-dialog__footer { padding: 10px 20px 16px !important; }
+
+/* Tags: squared status chips */
+.el-tag {
+  border-radius: var(--m-radius-sm) !important;
+  font-weight: 500 !important;
+  font-size: 12px !important;
+  border: 1px solid transparent !important;
+}
+.el-tag--success { background: var(--m-success-bg) !important; color: var(--m-success) !important; border-color: var(--m-success-bd) !important; }
+.el-tag--warning { background: var(--m-warning-bg) !important; color: var(--m-warning) !important; border-color: var(--m-warning-bd) !important; }
+.el-tag--danger  { background: var(--m-danger-bg) !important;  color: var(--m-danger) !important;  border-color: var(--m-danger-bd) !important; }
+.el-tag--primary { background: var(--m-running-bg) !important; color: var(--m-running) !important; border-color: var(--m-running-bd) !important; }
+.el-tag--info    { background: var(--m-surface-variant) !important; color: var(--m-text-secondary) !important; border-color: var(--m-border) !important; }
+
+.el-menu { border: none !important; }
+.el-tabs__item { font-size: 13px !important; }
+.el-tabs__nav-wrap::after { background-color: var(--m-border) !important; }
+
+/* ============================ Status pill utility ======================== */
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.status-running { color: var(--m-running); }  .status-running .status-dot { background: var(--m-running); }
+.status-success { color: var(--m-success); }  .status-success .status-dot { background: var(--m-success); }
+.status-warning { color: var(--m-warning); }  .status-warning .status-dot { background: var(--m-warning); }
+.status-danger  { color: var(--m-danger); }   .status-danger  .status-dot { background: var(--m-danger); }
+.status-waiting { color: var(--m-waiting); }  .status-waiting .status-dot { background: var(--m-waiting); }
+.status-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: var(--m-radius-sm);
+  font-size: 12px; font-weight: 500;
+  background: var(--m-surface-variant);
+}
+
+/* macOS-like compact menu opened from the lower-left settings button. */
+.nav-foot-menu.el-popper {
+  min-width: 188px !important;
+  width: 188px !important;
+  border: 1px solid rgba(28,28,26,.08) !important;
+  border-radius: 13px !important;
+  background: rgba(255,255,255,.94) !important;
+  box-shadow: 0 18px 46px -28px rgba(0,0,0,.34), 0 8px 18px -14px rgba(0,0,0,.20) !important;
+  backdrop-filter: blur(18px) saturate(1.2);
+  overflow: hidden;
+}
+.nav-foot-menu .el-popper__arrow {
+  display: none;
+}
+.nav-foot-menu .el-dropdown-menu {
+  min-width: 0 !important;
+  padding: 6px !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.nav-foot-menu .el-dropdown-menu__item {
+  height: 30px !important;
+  line-height: 30px !important;
+  padding: 0 10px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  color: #2b2b29 !important;
+  gap: 8px;
+}
+.nav-foot-menu .el-dropdown-menu__item .el-icon {
+  margin-right: 0 !important;
+  color: #777770;
+}
+.nav-foot-menu .el-dropdown-menu__item:not(.is-disabled):focus,
+.nav-foot-menu .el-dropdown-menu__item:not(.is-disabled):hover {
+  background: #eeeeeb !important;
+  color: #1f1f1d !important;
+}
+.nav-foot-menu .el-dropdown-menu__item--divided {
+  margin-top: 6px !important;
+  border-top: 1px solid #eeeeeb !important;
+}
+.nav-foot-menu .el-dropdown-menu__item--divided::before {
+  height: 6px !important;
+  margin: 0 -6px !important;
+  background: transparent !important;
+}
+
+/* ============================ Page utilities ============================= */
+.page { padding: 18px 24px; }
+.page-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; }
+.page-head h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--m-text); }
+.page-title { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--m-text); line-height: 1.3; }
+.muted { color: var(--m-text-secondary); }
+.surface { background: var(--m-surface); border-radius: var(--m-radius-lg); border:1px solid var(--m-border); padding: 14px; }
+
+.tool-trace {
+  background: var(--m-surface-sunken); border-left: 2px solid var(--m-warning);
+  border-radius: var(--m-radius-sm); padding: 8px 12px; margin: 6px 0;
+  font-size: 12px; color: var(--m-text-secondary); font-family: var(--m-font-mono);
+}
+
+/* ============================ Scrollbars (thin, IDE) ===================== */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #d2d2cd; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #bcbcb6; background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-corner { background: transparent; }

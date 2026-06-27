@@ -1,0 +1,208 @@
+import http from './http'
+
+export const api = {
+  // auth
+  login: (username: string, password: string) =>
+    http.post('/api/auth/login', { username, password }).then((r) => r.data),
+  me: () => http.get('/api/auth/me').then((r) => r.data),
+  changePassword: (old_password: string, new_password: string) =>
+    http.post('/api/auth/change-password', { old_password, new_password }).then((r) => r.data),
+  updateEmail: (email: string | null) =>
+    http.patch('/api/auth/me/email', { email }).then((r) => r.data),
+
+  // tasks
+  tasks: () => http.get('/api/tasks').then((r) => r.data),
+  task: (id: number) => http.get(`/api/tasks/${id}`).then((r) => r.data),
+  createTask: (p: any) => http.post('/api/tasks', p).then((r) => r.data),
+  updateTask: (id: number, p: any) => http.patch(`/api/tasks/${id}`, p).then((r) => r.data),
+  deleteTask: (id: number) => http.delete(`/api/tasks/${id}`).then((r) => r.data),
+  runTask: (id: number) => http.post(`/api/tasks/${id}/run`).then((r) => r.data),
+  toggleTask: (id: number) => http.post(`/api/tasks/${id}/toggle`).then((r) => r.data),
+  taskRuns: (id: number, params: { limit?: number; offset?: number } = {}) =>
+    http.get(`/api/tasks/${id}/runs`, { params: { limit: 30, offset: 0, ...params } }).then((r) => r.data),
+  taskRun: (rid: number) => http.get(`/api/task-runs/${rid}`).then((r) => r.data),
+  cancelTaskRun: (rid: number) => http.post(`/api/task-runs/${rid}/cancel`).then((r) => r.data),
+  deleteTaskRun: (rid: number) => http.delete(`/api/task-runs/${rid}`).then((r) => r.data),
+  clearTaskRuns: (id: number) => http.delete(`/api/tasks/${id}/runs`).then((r) => r.data),
+
+  // notifications
+  notifications: (params: { unread?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/notifications', { params: { limit: 30, offset: 0, ...params } }).then((r) => r.data),
+  markNotificationRead: (id: number) => http.post(`/api/notifications/${id}/read`).then((r) => r.data),
+  markAllNotificationsRead: () => http.post('/api/notifications/read-all').then((r) => r.data),
+
+  // chat
+  myAgents: () => http.get('/api/agents').then((r) => r.data),
+  myDefaultAgent: () => http.get('/api/agents/default').then((r) => r.data),
+  agentCapabilities: (agent_id: number) =>
+    http.get(`/api/agents/${agent_id}/capabilities`).then((r) => r.data),
+  agentMcpTools: (agent_id: number, mcp_id: number) =>
+    http.get(`/api/agents/${agent_id}/mcps/${mcp_id}/tools`).then((r) => r.data),
+  conversations: (params?: { workspace_id?: number; kind?: string }) =>
+    http.get('/api/conversations', { params }).then((r) => r.data),
+  createConversation: (opts?: {
+    agent_id?: number; title?: string; workspace_id?: number;
+    model_id?: number; permission_mode?: string;
+  }) => http.post('/api/conversations', opts || {}).then((r) => r.data),
+  renameConversation: (id: number, patch: { title?: string; model_id?: number; permission_mode?: string; workspace_id?: number | null }) =>
+    http.patch(`/api/conversations/${id}`, patch).then((r) => r.data),
+  bindConversationWorkspace: (id: number, workspace_id: number | null) =>
+    http.patch(`/api/conversations/${id}`, { workspace_id }).then((r) => r.data),
+  deleteConversation: (id: number) =>
+    http.delete(`/api/conversations/${id}`).then((r) => r.data),
+  messages: (cid: number) =>
+    http.get(`/api/conversations/${cid}/messages`).then((r) => r.data),
+  // Answer a pending tool-approval request raised mid-stream by the agent.
+  decidePermission: (
+    cid: number,
+    request_id: string,
+    decision: { behavior: 'allow' | 'deny'; scope?: 'once' | 'session'; message?: string },
+  ) =>
+    http.post(`/api/conversations/${cid}/permissions/${request_id}/decision`, decision).then((r) => r.data),
+
+  // ---- Workspaces (projects) ----
+  workspaces: () => http.get('/api/workspaces').then((r) => r.data),
+  createWorkspace: (payload: { path: string; name?: string; default_agent_id?: number; permission_mode?: string }) =>
+    http.post('/api/workspaces', payload).then((r) => r.data),
+  updateWorkspace: (id: number, patch: Record<string, any>) =>
+    http.patch(`/api/workspaces/${id}`, patch).then((r) => r.data),
+  touchWorkspace: (id: number) => http.post(`/api/workspaces/${id}/touch`).then((r) => r.data),
+  deleteWorkspace: (id: number) => http.delete(`/api/workspaces/${id}`).then((r) => r.data),
+  wsTree: (id: number, path = '') =>
+    http.get(`/api/workspaces/${id}/tree`, { params: { path } }).then((r) => r.data),
+  wsFile: (id: number, path: string) =>
+    http.get(`/api/workspaces/${id}/file`, { params: { path } }).then((r) => r.data),
+  wsSearch: (id: number, q: string) =>
+    http.get(`/api/workspaces/${id}/search`, { params: { q } }).then((r) => r.data),
+  wsCreateFile: (id: number, path: string, content = '') =>
+    http.post(`/api/workspaces/${id}/file`, { path, content }).then((r) => r.data),
+  wsCreateDir: (id: number, path: string) =>
+    http.post(`/api/workspaces/${id}/dir`, { path }).then((r) => r.data),
+
+  uploadFile: (file: File, conversation_id?: number) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (conversation_id) fd.append('conversation_id', String(conversation_id))
+    return http.post('/api/files/upload', fd).then((r) => r.data)
+  },
+  getFile: (id: number) => http.get(`/api/files/${id}`).then((r) => r.data),
+  reparseFile: (id: number) => http.post(`/api/files/${id}/reparse`).then((r) => r.data),
+  deleteFile: (id: number) => http.delete(`/api/files/${id}`).then((r) => r.data),
+  refreshDownload: (output_path: string) =>
+    http.post('/api/downloads/refresh', null, { params: { output_path } }).then((r) => r.data),
+
+  // admin
+  roles: () => http.get('/api/admin/roles').then((r) => r.data),
+  createRole: (p: any) => http.post('/api/admin/roles', p).then((r) => r.data),
+  updateRole: (id: number, p: any) => http.patch(`/api/admin/roles/${id}`, p).then((r) => r.data),
+  deleteRole: (id: number) => http.delete(`/api/admin/roles/${id}`).then((r) => r.data),
+
+  users: (params: { q?: string; role_id?: number; department_id?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/admin/users', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+  createUser: (p: any) => http.post('/api/admin/users', p).then((r) => r.data),
+  updateUser: (id: number, p: any) => http.patch(`/api/admin/users/${id}`, p).then((r) => r.data),
+  deleteUser: (id: number) => http.delete(`/api/admin/users/${id}`).then((r) => r.data),
+
+  departments: (q?: string) =>
+    http.get('/api/admin/departments', { params: q ? { q } : {} }).then((r) => r.data),
+  departmentTree: () => http.get('/api/admin/departments/tree').then((r) => r.data),
+  createDepartment: (p: any) => http.post('/api/admin/departments', p).then((r) => r.data),
+  updateDepartment: (id: number, p: any) => http.patch(`/api/admin/departments/${id}`, p).then((r) => r.data),
+  deleteDepartment: (id: number, force = false) =>
+    http.delete(`/api/admin/departments/${id}`, { params: { force } }).then((r) => r.data),
+
+  models: () => http.get('/api/admin/models').then((r) => r.data),
+  modelPresets: () => http.get('/api/admin/models/presets').then((r) => r.data),
+  createModel: (p: any) => http.post('/api/admin/models', p).then((r) => r.data),
+  updateModel: (id: number, p: any) => http.patch(`/api/admin/models/${id}`, p).then((r) => r.data),
+  deleteModel: (id: number) => http.delete(`/api/admin/models/${id}`).then((r) => r.data),
+  testModel: (id: number) => http.post(`/api/admin/models/${id}/test`).then((r) => r.data),
+
+  mcps: () => http.get('/api/admin/mcp').then((r) => r.data),
+  createMcp: (p: any) => http.post('/api/admin/mcp', p).then((r) => r.data),
+  updateMcp: (id: number, p: any) => http.patch(`/api/admin/mcp/${id}`, p).then((r) => r.data),
+  deleteMcp: (id: number) => http.delete(`/api/admin/mcp/${id}`).then((r) => r.data),
+  pingMcp: (id: number) => http.post(`/api/admin/mcp/${id}/ping`).then((r) => r.data),
+  mcpTools: (id: number) => http.get(`/api/admin/mcp/${id}/tools`).then((r) => r.data),
+  resummarizeMcp: (id: number) => http.post(`/api/admin/mcp/${id}/resummarize`).then((r) => r.data),
+
+  // connected apps (CLI tools)
+  cliApps: () => http.get('/api/admin/cli-apps').then((r) => r.data),
+  cliAppsCatalog: () => http.get('/api/admin/cli-apps/catalog').then((r) => r.data),
+  connectCliApp: (app_key: string) => http.post('/api/admin/cli-apps/connect', { app_key }).then((r) => r.data),
+  addCustomCliApp: (p: { name: string; bin_name: string; icon?: string; summary?: string; install_command?: string }) =>
+    http.post('/api/admin/cli-apps/custom', p).then((r) => r.data),
+  installCliApp: (id: number) => http.post(`/api/admin/cli-apps/${id}/install`).then((r) => r.data),
+  detectCliApp: (id: number) => http.post(`/api/admin/cli-apps/${id}/detect`).then((r) => r.data),
+  deleteCliApp: (id: number) => http.delete(`/api/admin/cli-apps/${id}`).then((r) => r.data),
+
+  skills: () => http.get('/api/admin/skills').then((r) => r.data),
+  createSkill: (p: any) => http.post('/api/admin/skills', p).then((r) => r.data),
+  updateSkill: (id: number, p: any) => http.patch(`/api/admin/skills/${id}`, p).then((r) => r.data),
+  deleteSkill: (id: number) => http.delete(`/api/admin/skills/${id}`).then((r) => r.data),
+  uploadSkill: (file: File, code: string, name: string, description: string, force = false) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('code', code)
+    fd.append('name', name)
+    fd.append('description', description || '')
+    if (force) fd.append('force', 'true')
+    return http.post('/api/admin/skills/upload', fd).then((r) => r.data)
+  },
+  skillFiles: (id: number) => http.get(`/api/admin/skills/${id}/files`).then((r) => r.data),
+  skillFile: (id: number, path: string) =>
+    http.get(`/api/admin/skills/${id}/file`, { params: { path } }).then((r) => r.data),
+  saveSkillFile: (id: number, path: string, content: string) =>
+    http.put(`/api/admin/skills/${id}/file`, { path, content }).then((r) => r.data),
+  resummarizeSkill: (id: number) => http.post(`/api/admin/skills/${id}/resummarize`).then((r) => r.data),
+
+  packs: () => http.get('/api/admin/packs').then((r) => r.data),
+  createPack: (p: any) => http.post('/api/admin/packs', p).then((r) => r.data),
+  updatePack: (id: number, p: any) => http.patch(`/api/admin/packs/${id}`, p).then((r) => r.data),
+  deletePack: (id: number) => http.delete(`/api/admin/packs/${id}`).then((r) => r.data),
+  approvals: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    http.get('/api/admin/approvals', { params: { limit: 50, offset: 0, ...params } }).then((r) => r.data),
+  decideApproval: (id: number, payload: { decision: 'approved' | 'rejected'; reason?: string | null }) =>
+    http.post(`/api/admin/approvals/${id}/decision`, payload).then((r) => r.data),
+  agents: () => http.get('/api/admin/agents').then((r) => r.data),
+  agent: (id: number) => http.get(`/api/admin/agents/${id}`).then((r) => r.data),
+  createAgent: (p: any) => http.post('/api/admin/agents', p).then((r) => r.data),
+  updateAgent: (id: number, p: any) => http.patch(`/api/admin/agents/${id}`, p).then((r) => r.data),
+  deleteAgent: (id: number) => http.delete(`/api/admin/agents/${id}`).then((r) => r.data),
+  polishAgentText: (p: { kind: 'description' | 'system_prompt'; text: string; agent_name?: string; model_id?: number }) =>
+    http.post('/api/admin/agents/polish', p).then((r) => r.data),
+
+  callLogs: (params: { limit?: number; offset?: number; user_id?: number; agent_id?: number } = {}) =>
+    http.get('/api/admin/logs/calls', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+  usageStats: (days = 30) =>
+    http.get('/api/admin/logs/usage', { params: { days } }).then((r) => r.data),
+  // ---- Remote bridge ----
+  bridgeChannels: () => http.get('/api/bridge/channels').then((r) => r.data),
+  bridgeChannel: (ch: string) => http.get(`/api/bridge/channels/${ch}`).then((r) => r.data),
+  saveBridgeChannel: (ch: string, payload: any) =>
+    http.put(`/api/bridge/channels/${ch}`, payload).then((r) => r.data),
+  testBridgeChannel: (ch: string) =>
+    http.post(`/api/bridge/channels/${ch}/test`).then((r) => r.data),
+  auditLogs: (params: { limit?: number; offset?: number; user_id?: number } = {}) =>
+    http.get('/api/admin/logs/audit', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+
+  // favorites (Space)
+  favorites: (params: { q?: string; agent_id?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/favorites', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+  createFavorite: (message_id: number, note?: string) =>
+    http.post('/api/favorites', { message_id, note }).then((r) => r.data),
+  updateFavorite: (id: number, note: string | null) =>
+    http.patch(`/api/favorites/${id}`, { note }).then((r) => r.data),
+  deleteFavorite: (id: number) =>
+    http.delete(`/api/favorites/${id}`).then((r) => r.data),
+  deleteFavoriteByMessage: (message_id: number) =>
+    http.delete(`/api/favorites/by-message/${message_id}`).then((r) => r.data),
+  checkFavorites: (message_ids: number[]) =>
+    http.get('/api/favorites/check', { params: { message_ids: message_ids.join(',') } }).then((r) => r.data as Record<string, number>),
+
+  // ---- System settings (MinerU etc.) ----
+  getMineruSettings: () =>
+    http.get('/api/admin/settings/mineru').then((r) => r.data),
+  saveMineruSettings: (p: { mode: string; base_url: string; api_key: string; timeout_sec: number }) =>
+    http.put('/api/admin/settings/mineru', p).then((r) => r.data),
+}

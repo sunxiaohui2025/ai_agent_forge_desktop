@@ -1,0 +1,87 @@
+"""Bootstrap script: creates tables (via metadata.create_all) and seeds default roles + admin.
+
+For production, prefer `alembic revision --autogenerate` + `alembic upgrade head`.
+This script is a quick-start for first run.
+"""
+from __future__ import annotations
+import asyncio
+from sqlalchemy import select
+from app.core.config import settings
+from app.core.security import hash_password
+from app.db.session import engine, SessionLocal, Base
+from app.db.models import Role, User
+
+
+DEFAULT_ROLES = [
+    {"code": "admin", "name": "超级管理员", "description": "全部权限"},
+    {"code": "operator", "name": "运营管理员", "description": "可配置 Skill / MCP / 智能体 / 模型 / Solution Pack / 日志"},
+    {"code": "user", "name": "普通用户", "description": "仅使用智能体"},
+]
+
+
+async def main():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        # idempotent column adds for existing installations
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_turns INTEGER NOT NULL DEFAULT 15"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS effort VARCHAR(16) NOT NULL DEFAULT 'medium'"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS work_dir VARCHAR(1024)"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE models ADD COLUMN IF NOT EXISTS extra_params_json JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_department_id ON users (department_id)"
+        )
+        # uploaded_files: parse fields + lifecycle tracking
+        for stmt in [
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_status VARCHAR(16) NOT NULL DEFAULT 'pending'",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_engine VARCHAR(32)",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_markdown TEXT",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_chars INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_error TEXT",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_at TIMESTAMPTZ",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ",
+            "CREATE INDEX IF NOT EXISTS ix_uploaded_files_last_used_at ON uploaded_files (last_used_at)",
+            # users: optional contact email (for task notifications)
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
+        ]:
+            await conn.exec_driver_sql(stmt)
+    async with SessionLocal() as db:
+        # roles
+        for r in DEFAULT_ROLES:
+            existing = (await db.execute(select(Role).where(Role.code == r["code"]))).scalar_one_or_none()
+            if not existing:
+                db.add(Role(**r))
+        await db.commit()
+
+        # admin user
+        admin_role = (await db.execute(select(Role).where(Role.code == "admin"))).scalar_one()
+        existing = (await db.execute(
+            select(User).where(User.username == settings.SEED_ADMIN_USERNAME))).scalar_one_or_none()
+        if not existing:
+            db.add(User(
+                username=settings.SEED_ADMIN_USERNAME,
+                password_hash=hash_password(settings.SEED_ADMIN_PASSWORD),
+                display_name="管理员",
+                role_id=admin_role.id,
+            ))
+            await db.commit()
+            print(f"创建管理员账号: {settings.SEED_ADMIN_USERNAME} / {settings.SEED_ADMIN_PASSWORD}")
+        else:
+            print("管理员账号已存在,跳过")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
