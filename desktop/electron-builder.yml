@@ -1,0 +1,57 @@
+appId: com.h3c.agent
+productName: H3C Agent
+copyright: Copyright © 2026
+
+directories:
+  output: release
+  buildResources: build
+
+# App source: only the Electron shell files (no node_modules dev cruft beyond pty).
+files:
+  - main.js
+  - preload.js
+  - package.json
+  - node_modules/@lydell/**
+
+# Bundled sidecar (PyInstaller onedir) + Vue dist → resources/.
+# These dirs are produced by `npm run prepare:resources` before packing.
+extraResources:
+  - from: resources/backend
+    to: backend
+    filter: ["**/*"]
+  - from: resources/frontend
+    to: frontend
+    filter: ["**/*"]
+
+asar: true
+asarUnpack:
+  - "node_modules/@lydell/**"   # native node-pty must stay on disk
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Unsigned by default. To notarize, set CSC_LINK + APPLE_ID env vars.
+  identity: null
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+linux:
+  icon: build/icon.png
+  target: [AppImage]
+  category: Development

@@ -1,0 +1,26 @@
+{
+  "name": "h3c-agent-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "H3C Agent desktop shell (Electron + Python sidecar)",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node dev.js",
+    "electron": "ELECTRON_DEV=1 electron .",
+    "start": "electron .",
+    "build:frontend": "cd ../frontend && npm run build",
+    "build:backend": "cd ../backend && .venv/bin/pyinstaller sidecar.spec --noconfirm",
+    "prepare:resources": "node prepare-resources.mjs",
+    "dist:mac": "npm run build:frontend && npm run build:backend && npm run prepare:resources && electron-builder --mac --config electron-builder.yml",
+    "dist:win": "npm run build:frontend && npm run build:backend && npm run prepare:resources && electron-builder --win --config electron-builder.yml",
+    "dist:linux": "npm run build:frontend && npm run build:backend && npm run prepare:resources && electron-builder --linux --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.12"
+  }
+}

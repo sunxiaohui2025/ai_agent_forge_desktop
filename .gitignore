@@ -24,7 +24,8 @@ frontend/.env.local
 .history/
 .vscode/
 .idea/
-desktop/*
+# desktop/ 源码需要入库（Electron 壳 + 打包配置）。
+# 产物目录(node_modules/dist/release/resources)由 desktop/.gitignore 精确忽略。
 
 storage/uploads/*
 !storage/uploads/.gitkeep

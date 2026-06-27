@@ -625,3 +625,12 @@ git diff --staged | grep -iE 'password|api[_-]?key|secret|token' | grep -v 'plac
 - [pycryptodome](https://www.pycryptodome.org) — 企业微信回调 AES 加解密
 # ai_agent_forge_desktop
 # ai_agent_forge_desktop
+
+
+## License  执照
+Business Source License 1.1 (BSL-1.1)
+- [商业资源许可证 1.1 (BSL-1.1)](LICENCE.MD)
+
+Personal / academic / non-profit use: free and unrestricted
+Commercial use: requires a separate license — contact @扶摇Sun on 小红书
+Change date: 2029-03-16 — after which the code converts to Apache 2.0
