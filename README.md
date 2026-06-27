@@ -4,6 +4,19 @@
 
 它和普通聊天框最大的不同，是**能动手干活**：装载技能（Skill）、连接 MCP 工具、接入本地命令行（CLI），在你授权的工作目录里读写文件、执行脚本。而这一切都跑在一套分层的本地安全沙箱之上——工具白名单、输入过滤、技能静态扫描、目录级隔离、密钥本地加密——让"能执行"和"可控、安全"并存。
 
+## 下载安装
+
+最新版本：**v0.1.0** — [全部下载与更新日志](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/tag/v0.1.0)
+
+| 平台 | 安装包 | 说明 |
+|---|---|---|
+| macOS (Apple Silicon) | [Agent.Forge-0.1.0-arm64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-arm64.dmg) | M1/M2/M3 等 ARM 芯片 |
+| macOS (Intel) | [Agent.Forge-0.1.0-x64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-x64.dmg) | Intel 芯片 Mac |
+| Windows | 即将提供 | 关注 [Releases](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases) |
+
+> macOS 安装包未签名，首次打开请**右键 →「打开」**，或在「系统设置 → 隐私与安全性」中放行。
+> 装好后，应用内「设置 → 检查更新」会自动比对最新 Release 版本并引导下载。
+
 ## 核心特点
 
 - **本地优先，数据自留**：SQLite 数据库 + 本地 storage，全部在 `~/.h3c-agent`，不上传云端，升级不丢数据。
