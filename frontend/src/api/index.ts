@@ -147,7 +147,9 @@ export const api = {
     fd.append('name', name)
     fd.append('description', description || '')
     if (force) fd.append('force', 'true')
-    return http.post('/api/admin/skills/upload', fd).then((r) => r.data)
+    // skipErrorToast: a 400 here usually carries inline security findings that
+    // the caller renders itself — suppress the generic global error toast.
+    return http.post('/api/admin/skills/upload', fd, { skipErrorToast: true } as any).then((r) => r.data)
   },
   skillFiles: (id: number) => http.get(`/api/admin/skills/${id}/files`).then((r) => r.data),
   skillFile: (id: number, path: string) =>

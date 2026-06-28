@@ -152,7 +152,7 @@
     </el-dialog>
 
     <!-- Upload Skill package dialog -->
-    <el-dialog v-model="uploadVisible" title="上传 Skill 包" width="560px">
+    <el-dialog v-model="uploadVisible" title="上传 Skill 包" width="560px" destroy-on-close>
       <el-form :model="uploadForm" :rules="uploadRules" ref="uploadFormRef" label-width="100px">
         <el-form-item label="编码" prop="code">
           <el-input v-model="uploadForm.code" placeholder="英文小写,作为目录名,如 pdf_extract" />
@@ -165,12 +165,14 @@
         </el-form-item>
         <el-form-item label="Skill 包" prop="file">
           <el-upload
+            ref="uploadRef"
             drag
             :auto-upload="false"
             :show-file-list="true"
             :limit="1"
             :on-change="onFileChange"
             :on-remove="onFileRemove"
+            :on-exceed="onFileExceed"
             accept=".zip"
           >
             <el-icon class="el-icon--upload" :size="40"><UploadFilled /></el-icon>
@@ -233,7 +235,8 @@
 </template>
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
+import type { UploadInstance, UploadRawFile } from 'element-plus'
 import { api } from '@/api'
 
 const yamlSample = `name: contract_review_flow
@@ -261,6 +264,7 @@ const yamlText = ref('')
 // upload state
 const uploadVisible = ref(false)
 const uploadFormRef = ref<any>(null)
+const uploadRef = ref<UploadInstance>()
 const uploadForm = reactive<any>({ code: '', name: '', description: '', file: null as File | null, force: false })
 const uploading = ref(false)
 const uploadFindings = ref<any[]>([])
@@ -501,6 +505,18 @@ function onFileChange(uf: any) {
 }
 function onFileRemove() {
   uploadForm.file = null
+  uploadFindings.value = []
+  uploadForm.force = false
+}
+function onFileExceed(files: File[]) {
+  // limit=1: dragging a new zip should REPLACE the previous one. Without this,
+  // el-upload rejects the extra file and keeps showing the old name. Clear the
+  // internal list, then start the new file so the UI + form stay in sync.
+  uploadRef.value?.clearFiles()
+  const file = files[0] as UploadRawFile
+  file.uid = genFileId()
+  uploadRef.value?.handleStart(file)
+  uploadForm.file = file
   uploadFindings.value = []
   uploadForm.force = false
 }

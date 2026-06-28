@@ -89,7 +89,10 @@ http.interceptors.response.use(
         .map((d: any) => `${(d.loc || []).slice(-1)[0] || ''}: ${d.msg}`)
         .join('; ')
     } else if (data?.message) msg = data.message
-    if (status !== 401) ElMessage.error(msg || '请求失败')
+    // Callers can opt out of the global error toast (e.g. skill upload surfaces
+    // security findings inline and would otherwise also show a generic 400).
+    const skipToast = (config as any).skipErrorToast === true
+    if (status !== 401 && !skipToast) ElMessage.error(msg || '请求失败')
     return Promise.reject(err)
   },
 )

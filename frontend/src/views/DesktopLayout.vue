@@ -54,7 +54,8 @@
               class="conv" :class="{ active: c.id === chat.currentConvId }"
               @click="openConv(c)"
             >
-              <el-icon class="conv-ico"><ChatLineRound /></el-icon>
+              <el-icon v-if="chat.isStreaming(c.id)" class="conv-ico conv-running"><Loading /></el-icon>
+              <el-icon v-else class="conv-ico"><ChatLineRound /></el-icon>
               <span class="conv-title">{{ c.title }}</span>
               <el-icon class="conv-del" @click.stop="onDeleteConv(c)"><Delete /></el-icon>
             </div>
@@ -72,7 +73,8 @@
           class="conv standalone" :class="{ active: c.id === chat.currentConvId }"
           @click="openConv(c)"
         >
-          <el-icon class="conv-ico"><ChatLineRound /></el-icon>
+          <el-icon v-if="chat.isStreaming(c.id)" class="conv-ico conv-running"><Loading /></el-icon>
+          <el-icon v-else class="conv-ico"><ChatLineRound /></el-icon>
           <span class="conv-title">{{ c.title }}</span>
           <el-icon class="conv-del" @click.stop="onDeleteConv(c)"><Delete /></el-icon>
         </div>
@@ -390,6 +392,11 @@ async function onLogout() {
 .conv.active { background: #e4e4e2; color: var(--m-text); box-shadow: none; }
 .conv.standalone { margin: 0; }
 .conv-ico { flex-shrink: 0; color: var(--m-text-tertiary); }
+/* Running indicator: this conversation has an in-flight turn streaming in the
+   background (kept alive in the chat store even when the chat view is unmounted).
+   A spinning loader replaces the static chat icon so the user can spot it. */
+.conv-running { color: var(--m-primary, #2f6df6); animation: conv-spin 1s linear infinite; }
+@keyframes conv-spin { to { transform: rotate(360deg); } }
 .conv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin:2px}
 .conv-del {
   margin-left: auto; flex-shrink: 0;

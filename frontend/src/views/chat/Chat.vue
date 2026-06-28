@@ -111,16 +111,6 @@
                 </div>
               </div>
 
-              <!-- file cards (saved outputs) -->
-              <div v-if="(m.content_json?.files?.length) || m._files?.length" class="files-block">
-                <FileCard
-                  v-for="(f, fi) in (m._files?.length ? m._files : m.content_json.files)"
-                  :key="fi + (f.name || '')"
-                  :file="f"
-                  @preview="openPreview"
-                />
-              </div>
-
               <!-- UI Schema surfaces (interactive components) -->
               <div v-if="(m.content_json?.uis?.length) || m._uis?.length" class="ui-block">
                 <MessageDispatcher
@@ -131,37 +121,33 @@
                 />
               </div>
 
-              <!-- permission approval cards (interactive tool gating) -->
-              <div v-if="m._perms?.length" class="perm-block">
-                <div
-                  v-for="(req, pi) in m._perms"
-                  :key="req.request_id || pi"
-                  :class="['perm-card', { resolved: req.status !== 'pending', collapsed: req.status !== 'pending' && req._collapsed }]"
-                >
+              <!-- permission approval history (resolved requests only; pending
+                   ones surface in the floating panel above the messages) -->
+              <div v-if="m._perms?.some((r: any) => r.status !== 'pending')" class="perm-block">
+                <template v-for="(req, pi) in m._perms" :key="req.request_id || pi">
                   <div
-                    class="perm-head"
-                    :class="{ clickable: req.status !== 'pending' }"
-                    @click="req.status !== 'pending' && (req._collapsed = !req._collapsed)"
+                    v-if="req.status !== 'pending'"
+                    :class="['perm-card', 'resolved', { collapsed: req._collapsed }]"
                   >
-                    <el-icon class="perm-icon">
-                      <component :is="permStatusIcon(req)" />
-                    </el-icon>
-                    <span class="perm-title">{{ permHeadText(req) }}</span>
-                    <span class="perm-tool">{{ req.tool_name }}</span>
-                    <el-icon v-if="req.status !== 'pending'" class="perm-caret">
-                      <ArrowDown v-if="req._collapsed" /><ArrowUp v-else />
-                    </el-icon>
-                  </div>
-                  <div v-show="req.status === 'pending' || !req._collapsed" class="perm-body">
-                    <div class="perm-reason">{{ req.reason }}</div>
-                    <pre v-if="req.summary" class="perm-summary">{{ req.summary }}</pre>
-                    <div v-if="req.status === 'pending'" class="perm-actions">
-                      <button class="perm-btn allow" :disabled="req._busy" @click="answerPermission(req, 'allow', 'once')">允许本次</button>
-                      <button class="perm-btn allow-session" :disabled="req._busy" @click="answerPermission(req, 'allow', 'session')">本会话都允许 {{ req.tool_name }}</button>
-                      <button class="perm-btn deny" :disabled="req._busy" @click="answerPermission(req, 'deny', 'once')">拒绝</button>
+                    <div
+                      class="perm-head clickable"
+                      @click="req._collapsed = !req._collapsed"
+                    >
+                      <el-icon class="perm-icon">
+                        <component :is="permStatusIcon(req)" />
+                      </el-icon>
+                      <span class="perm-title">{{ permHeadText(req) }}</span>
+                      <span class="perm-tool">{{ req.tool_name }}</span>
+                      <el-icon class="perm-caret">
+                        <ArrowDown v-if="req._collapsed" /><ArrowUp v-else />
+                      </el-icon>
+                    </div>
+                    <div v-show="!req._collapsed" class="perm-body">
+                      <div class="perm-reason">{{ req.reason }}</div>
+                      <pre v-if="req.summary" class="perm-summary">{{ req.summary }}</pre>
                     </div>
                   </div>
-                </div>
+                </template>
               </div>
 
               <!-- main answer -->
@@ -193,6 +179,18 @@
                     />
                   </template>
                 </template>
+              </div>
+
+              <!-- file cards (saved outputs) — rendered after the answer text so
+                   generated artifacts land at the bottom of the message and stay
+                   visible without scrolling back up -->
+              <div v-if="(m.content_json?.files?.length) || m._files?.length" class="files-block">
+                <FileCard
+                  v-for="(f, fi) in (m._files?.length ? m._files : m.content_json.files)"
+                  :key="fi + (f.name || '')"
+                  :file="f"
+                  @preview="openPreview"
+                />
               </div>
 
               <div v-if="showThinkingTail(m)" class="thinking-tail">
@@ -238,6 +236,39 @@
 
       <!-- Composer -->
       <div class="composer-wrap">
+        <!-- Approval panel: sits directly above the input box (same width) so a
+             blocked tool execution is always visible & confirmable. -->
+        <transition name="perm-float">
+          <div v-if="pendingPerms.length" class="perm-float">
+            <div class="perm-float-head">
+              <span class="perm-float-dot" />
+              <span class="perm-float-label">需要你确认是否继续执行</span>
+              <span v-if="pendingPerms.length > 1" class="perm-float-count">{{ pendingPerms.length }} 项待处理</span>
+            </div>
+            <div class="perm-float-list">
+              <div
+                v-for="req in pendingPerms"
+                :key="req.request_id"
+                :class="['perm-card', 'pending', { 'is-high': req.risk === 'high' }]"
+              >
+                <div class="perm-head">
+                  <el-icon class="perm-icon"><Lock /></el-icon>
+                  <span class="perm-title">{{ permHeadText(req) }}</span>
+                  <span class="perm-tool">{{ req.tool_name }}</span>
+                </div>
+                <div class="perm-body">
+                  <div class="perm-reason">{{ req.reason }}</div>
+                  <pre v-if="req.summary" class="perm-summary">{{ req.summary }}</pre>
+                  <div class="perm-actions">
+                    <button class="perm-btn allow" :disabled="req._busy" @click="answerPermission(req, 'allow', 'once')">允许本次</button>
+                    <button class="perm-btn allow-session" :disabled="req._busy" @click="answerPermission(req, 'allow', 'session')">本会话都允许 {{ req.tool_name }}</button>
+                    <button class="perm-btn deny" :disabled="req._busy" @click="answerPermission(req, 'deny', 'once')">拒绝</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
         <div v-if="chat.pendingFiles.length" class="files-row">
           <div
             v-for="f in chat.pendingFiles"
@@ -447,7 +478,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
@@ -550,8 +581,10 @@ const route = useRoute()
 const router = useRouter()
 
 const input = ref('')
-const sending = ref(false)
-const streamAbortController = ref<AbortController | null>(null)
+// Whether the CURRENTLY-VIEWED conversation has an in-flight turn. Driven by the
+// store (a singleton) so the streaming state — and the running turn itself —
+// survives this view being unmounted when the user switches menus/conversations.
+const sending = computed(() => chat.isStreaming(chat.currentConvId))
 
 // Home (command-center) mode: no active conversation → center & enlarge the
 // composer in the middle of the screen (Codex-style landing).
@@ -954,7 +987,9 @@ function clearMention() {
 }
 
 function stopStream() {
-  streamAbortController.value?.abort()
+  // Abort the active conversation's in-flight turn (runs in the store, so this
+  // works even after navigating away and back).
+  chat.stopStream()
 }
 
 const expandedMsgs = ref<Record<string, boolean>>({})
@@ -1063,6 +1098,20 @@ watch(() => route.query.msg, async (val) => {
   if (id && !Number.isNaN(id)) await scrollToMessage(id)
 })
 
+// The stream loop now lives in the store (so a turn survives this view being
+// unmounted). The DOM side-effects it used to do inline — auto-scroll and
+// thinking-panel scroll — must still run here. Drive them off the store's
+// streamTick, which bumps on every applied event. Only react when the
+// conversation currently being VIEWED is the one streaming, so a background
+// turn in another conversation doesn't yank this view around.
+watch(() => chat.streamTick, async () => {
+  const cid = chat.currentConvId
+  if (cid == null || !chat.isStreaming(cid)) return
+  const live = chat.live[cid]
+  if (live?.placeholder) scrollThinkingToBottom(live.placeholder)
+  await scrollBottom()
+})
+
 async function onPick(uploadFile: any) {
   // el-upload `on-change` fires once per selected file. The actual File is on .raw
   const file: File | undefined = uploadFile?.raw
@@ -1147,55 +1196,23 @@ function openPreview(f: any) {
 async function onAgentCall(text: string) {
   if (!chat.currentAgent || sending.value) return
   if (!chat.currentConvId) await chat.ensureConv()
+  const cid = chat.currentConvId
+  if (cid == null) return
 
-  const placeholder: any = reactive({
+  chat.messages.push({
     _tmp: Date.now(), role: 'assistant',
     content_json: { text: '' }, tool_calls_json: null,
-    _meta: null, _thinking: '', _steps: [], _stepIndex: {}, _files: [], _uis: [], _perms: [],
+    _meta: null, _thinking: '', _steps: [], _stepIndex: {} as Record<string, number>,
+    _files: [], _uis: [], _perms: [],
     _streaming: true,
   })
-  chat.messages.push(placeholder)
-  sending.value = true
+  // Keep a reference to the reactive proxy (the pushed array element), not the
+  // literal above — the store mutates this proxy as stream events arrive.
+  const placeholder: any = chat.messages[chat.messages.length - 1]
   await scrollBottom()
 
-  const token = localStorage.getItem('access_token')
-  const controller = new AbortController()
-  streamAbortController.value = controller
-  try {
-    const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ content: text, file_ids: [] }),
-      signal: controller.signal,
-    })
-    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n\n')
-      buf = lines.pop() || ''
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue
-        try {
-          const json = JSON.parse(line.slice(5).trim())
-          applyEvent(placeholder, json)
-        } catch {}
-        await scrollBottom()
-      }
-    }
-  } catch (e: any) {
-    if (e.name !== 'AbortError') {
-      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
-    }
-  } finally {
-    streamAbortController.value = null
-    placeholder._streaming = false
-    sending.value = false
-  }
+  // The turn runs in the store (singleton), so it survives this view unmounting.
+  await chat.streamTurn(cid, { content: text, file_ids: [] }, placeholder)
 }
 
 function renderContent(m: any) {
@@ -1338,33 +1355,6 @@ function formatStepData(v: any) {
     try { return JSON.stringify(JSON.parse(v), null, 2) } catch { return v }
   }
   return JSON.stringify(v, null, 2)
-}
-
-// Inline one-line summary for a tool step (shown on the action row so the user
-// sees WHAT each action targets — file path, command — without expanding).
-function stepSummary(name: string, input: any): string {
-  if (!input) return ''
-  let a = input
-  if (typeof a === 'string') { try { a = JSON.parse(a) } catch { return '' } }
-  if (typeof a !== 'object' || !a) return ''
-  switch (name) {
-    case 'write_file':
-    case 'read_file':
-    case 'list_dir':
-      return a.path || ''
-    case 'run_command':
-      return a.command || ''
-    case 'save_output_file':
-      return a.filename || ''
-    case 'Read': case 'Edit': case 'Write':
-      return a.file_path || a.path || ''
-    case 'Bash':
-      return a.command || ''
-    case 'Grep': case 'Glob':
-      return a.pattern || a.query || ''
-    default:
-      return ''
-  }
 }
 
 // -------- Thinking block: per-message scroll refs --------
@@ -1583,50 +1573,22 @@ async function send() {
   input.value = ''
   mentionedExpert.value = null
   chat.pendingFiles = []
-  sending.value = true
   await scrollBottom()
 
-  const token = localStorage.getItem('access_token')
-  const controller = new AbortController()
-  streamAbortController.value = controller
-  try {
-    const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ content: text, file_ids: fileIds, cli_app_ids: connectedApps.value.map((a) => a.id), skill_ids: selectedSkills.value.map((s) => s.id) }),
-      signal: controller.signal,
-    })
-    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n\n')
-      buf = lines.pop() || ''
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue
-        let json: any
-        try { json = JSON.parse(line.slice(5).trim()) } catch { continue }
-        applyEvent(placeholder, json)
-        await scrollBottom()
-      }
-    }
-  } catch (e: any) {
-    if (e.name !== 'AbortError') {
-      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
-    }
-  } finally {
-    streamAbortController.value = null
-    placeholder._steps?.forEach((s: any) => { if (s.status === 'running') s.status = 'done' })
-    placeholder._streaming = false
-    sending.value = false
+  // Bind the turn to the conversation it started in (not whatever's active when
+  // it ends — the user may switch conversations mid-stream). The fetch loop runs
+  // in the store (singleton), so the turn survives this view being unmounted.
+  const cid = chat.currentConvId as number
+  const body = {
+    content: text,
+    file_ids: fileIds,
+    cli_app_ids: connectedApps.value.map((a) => a.id),
+    skill_ids: selectedSkills.value.map((s) => s.id),
   }
+  await chat.streamTurn(cid, body, placeholder)
 
-  if (isFirstMessage && chat.currentConvId) {
-    const conv = chat.convs.find((c) => c.id === chat.currentConvId)
+  if (isFirstMessage && cid) {
+    const conv = chat.convs.find((c) => c.id === cid)
     if (conv) {
       const title = text.replace(/\s+/g, ' ').trim().slice(0, 30)
       if (title && title !== conv.title) {
@@ -1635,6 +1597,21 @@ async function send() {
     }
   }
 }
+
+// All still-pending approval requests across the whole conversation. Surfaced
+// in a floating panel pinned above the messages so a blocked tool execution is
+// always visible and confirmable without scrolling — once answered the request
+// leaves this list and remains in the message stream as collapsed history.
+const pendingPerms = computed(() => {
+  const out: any[] = []
+  for (const m of chat.messages as any[]) {
+    if (!Array.isArray(m._perms)) continue
+    for (const req of m._perms) {
+      if (req.status === 'pending') out.push(req)
+    }
+  }
+  return out
+})
 
 // Answer a pending tool-approval request. Posts the decision (which unblocks
 // the agent turn server-side) and marks the card resolved.
@@ -1693,76 +1670,6 @@ function permHeadText(req: any): string {
   }
 }
 
-function applyEvent(m: any, ev: { type: string; data: any }) {
-  const { type, data } = ev
-  if (type === 'meta') {
-    m._meta = data
-  } else if (type === 'text') {
-    m.content_json.text += data.text || ''
-  } else if (type === 'thinking') {
-    m._thinking += data.text || ''
-    scrollThinkingToBottom(m)
-  } else if (type === 'tool_use') {
-    const id = data.id || data.name
-    const existingIdx = m._stepIndex[id]
-    if (existingIdx != null) {
-      // update existing step (e.g. final input arrives at content_block_stop)
-      const s = m._steps[existingIdx]
-      if (data.input && (typeof data.input !== 'object' || Object.keys(data.input).length)) {
-        s.input = data.input
-        s.summary = stepSummary(s.name, data.input)
-      }
-      return
-    }
-    const idx = m._steps.length
-    m._stepIndex[id] = idx
-    const meta = resolveToolMeta(data.name || '')
-    m._steps.push({
-      kind: meta.kind,
-      name: data.name || '(tool)',
-      label: meta.label,
-      serverName: meta.serverName,
-      input: data.input,
-      summary: stepSummary(data.name, data.input),
-      status: 'running',
-      _start: performance.now(),
-    })
-  } else if (type === 'tool_result') {
-    const id = data.tool_use_id
-    let idx = id != null ? m._stepIndex[id] : undefined
-    if (idx == null) idx = m._steps.length - 1
-    const s = m._steps[idx]
-    if (s) {
-      s.output = data.content
-      s.status = 'done'
-      if (s._start) s.duration_ms = Math.round(performance.now() - s._start)
-    }
-  } else if (type === 'file') {
-    const next = Array.isArray(m._files) ? [...m._files, data] : [data]
-    m._files = next
-  } else if (type === 'ui') {
-    const next = Array.isArray(m._uis) ? [...m._uis, data] : [data]
-    m._uis = next
-  } else if (type === 'permission_request') {
-    // Agent paused awaiting tool approval. Surface a pending card; the user
-    // answers via answerPermission(), which POSTs the decision and unblocks
-    // the agent turn server-side.
-    const reqs = Array.isArray(m._perms) ? m._perms : []
-    reqs.push({
-      request_id: data.request_id,
-      tool_name: data.tool_name,
-      risk: data.risk,
-      reason: data.reason,
-      summary: data.summary,
-      mode: data.mode,
-      status: 'pending',
-      _collapsed: false,
-    })
-    m._perms = reqs
-  } else if (type === 'error') {
-    m.content_json.text += `\n\n[错误] ${data.message}`
-  }
-}
 </script>
 
 <style scoped>
@@ -1882,8 +1789,83 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .perm-btn.deny { background: transparent; color: #c2410c; }
 .perm-btn.deny:hover:not(:disabled) { background: #fff7ed; }
 
+/* Approval panel — sits directly above the input box inside .composer-wrap,
+   so it shares the composer width and a blocked tool execution is always
+   visible & confirmable right where the user is typing. */
+.perm-float {
+  width: 100%;
+  max-height: 46vh;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(28, 28, 26, .1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .1), 0 1px 3px rgba(0, 0, 0, .05);
+  backdrop-filter: blur(22px) saturate(1.12);
+  -webkit-backdrop-filter: blur(22px) saturate(1.12);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.perm-float-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #242421;
+  border-bottom: 1px solid rgba(28, 28, 26, .07);
+}
+.perm-float-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d97706;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 0 rgba(217, 119, 6, .5);
+  animation: perm-pulse 1.8s ease-out infinite;
+}
+@keyframes perm-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(217, 119, 6, .45); }
+  70% { box-shadow: 0 0 0 7px rgba(217, 119, 6, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+}
+.perm-float-label { flex: 1 1 auto; min-width: 0; }
+.perm-float-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: #b45309;
+  background: #fff7ed;
+  border-radius: 999px;
+  padding: 1px 9px;
+  flex-shrink: 0;
+}
+.perm-float-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+.perm-float .perm-card {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: #fff;
+  border-color: rgba(28, 28, 26, .12);
+}
+.perm-float .perm-card.is-high {
+  border-color: rgba(217, 119, 6, .4);
+  background: #fffbf5;
+}
+.perm-float-enter-active,
+.perm-float-leave-active { transition: opacity .22s ease, transform .22s ease; }
+.perm-float-enter-from,
+.perm-float-leave-to { opacity: 0; transform: translateY(10px); }
+
 /* Conv main */
-.conv { flex: 1; display: flex; flex-direction: column; min-width: 0; background: transparent; }
+.conv { flex: 1; display: flex; flex-direction: column; min-width: 0; background: transparent; position: relative; }
 .messages { flex: 1; overflow: auto; padding: 24px 0 16px; scroll-behavior: smooth; }
 
 .welcome {
@@ -1985,7 +1967,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .chat-wrap.home-mode .composer :deep(.el-textarea__inner) { min-height: 70px !important; font-size: 14px; }
 
-.msg { display: flex; gap: 12px; max-width: 910px; margin: 0 auto 18px; padding: 0 28px; }
+.msg { display: flex; gap: 12px; max-width: 910px; margin: 0 auto 18px; padding: 0 8px;transform: translateX(-20px); }
 .msg.user { flex-direction: row-reverse; }
 .avatar.bot {
   width: 30px; height: 30px; flex-shrink: 0;
