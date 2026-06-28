@@ -35,6 +35,15 @@
         :src="blobUrl"
       />
 
+      <!-- HTML: blob fetch failed — offer new-tab as fallback -->
+      <div v-else-if="kind === 'html'" class="state">
+        <el-icon :size="28"><Monitor /></el-icon>
+        <div>HTML 文件加载失败，可在新窗口查看</div>
+        <button class="download-link" @click="openInNewTab">
+          <el-icon :size="14"><Promotion /></el-icon> 在新窗口打开
+        </button>
+      </div>
+
       <!-- PDF: native browser viewer (blob URL) -->
       <iframe
         v-else-if="kind === 'pdf' && blobUrl"
