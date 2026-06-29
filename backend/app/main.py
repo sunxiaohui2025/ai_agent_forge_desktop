@@ -194,7 +194,49 @@ async def _seed_builtin_models() -> None:
     By default no models are shipped — users provision their own in the admin UI.
     To pre-seed models for an internal/enterprise deployment, set
     H3C_BUILTIN_MODELS or create backend/builtin_models.json (gitignored).
+
+    Also removes stale models that were seeded by older builds (before the
+    hardcoded model list was removed) to prevent leaked internal addresses
+    from persisting in user databases.
     """
+    from sqlalchemy import select
+    from .db.session import SessionLocal
+    from .db.models import Model, Agent
+    from .core.crypto import encrypt_str
+
+    # ── Clean up stale models from v0.1.0 hardcoded build ──────────
+    # Older builds shipped two hardcoded models pointing at an internal IP.
+    # Remove any model whose code or base_url matches those leaked values
+    # so they don't persist in user databases across upgrades.
+    STALE_CODES = {"qwen3.5-397b-a17b", "Kimi-K2.6"}
+    STALE_URL_PREFIXES = ("http://1.181.141.96:6018/",)
+
+    async with SessionLocal() as db:
+        stale_query = select(Model).where(
+            Model.code.in_(STALE_CODES)
+        )
+        for url_pfx in STALE_URL_PREFIXES:
+            stale_query = stale_query.union(
+                select(Model).where(Model.base_url.like(f"{url_pfx}%"))
+            )
+        stale_result = await db.execute(stale_query)
+        stale_models = stale_result.scalars().all()
+        if stale_models:
+            # Unbind the default agent from any stale model to avoid a broken
+            # reference after deletion.
+            stale_ids = {m.id for m in stale_models}
+            agents_hooked = (await db.execute(
+                select(Agent).where(Agent.default_model_id.in_(stale_ids))
+            )).scalars().all()
+            for ag in agents_hooked:
+                ag.default_model_id = None
+            for m in stale_models:
+                await db.delete(m)
+            logging.getLogger(__name__).info(
+                "cleaned %d stale built-in models from old build", len(stale_models)
+            )
+
+    # ── Seed from env / file ──────────────────────────────────────
     specs = _load_builtin_models_from_env()
     if not specs:
         return  # nothing to seed — user adds models manually
