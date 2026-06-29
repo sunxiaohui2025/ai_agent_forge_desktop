@@ -61,56 +61,80 @@ const pet = usePet()
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px 24px;
+  padding: 18px 20px;
   border-bottom: 1px solid #eeeeeb;
 }
 .toolbar-title { font-size: 15px; font-weight: 760; color: #242421; }
 .toolbar-desc { margin-top: 4px; color: #777770; font-size: 13px; }
-.pet-list { display: flex; flex-direction: column; }
+.pet-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
 .pet-row {
   display: flex;
   align-items: center;
-  gap: 20px;
-  min-height: 124px;
-  padding: 18px 24px;
-  border-bottom: 1px solid #eeeeeb;
-  cursor: pointer;
-  transition: background .14s;
-}
-.pet-row:last-child { border-bottom: 0; }
-.pet-row:hover { background: #fafaf8; }
-.pet-row.selected { background: #f6f6f3; }
-.pet-preview {
-  width: 92px;
-  height: 86px;
-  border: 1px solid #e7e7e4;
-  border-radius: 16px;
+  gap: 12px;
+  min-height: 86px;
+  padding: 12px;
+  border: 1px solid #eeeeeb;
+  border-radius: 14px;
   background: #fff;
+  cursor: pointer;
+  transition: background .14s, border-color .14s, box-shadow .14s;
+}
+.pet-row:hover { background: #fafaf8; border-color: #e2e2de; }
+.pet-row.selected {
+  background: #f6f6f3;
+  border-color: #d9d9d5;
+  box-shadow: 0 10px 26px rgba(0,0,0,.04);
+}
+.pet-preview {
+  width: 62px;
+  height: 58px;
+  border: 0;
+  border-radius: 13px;
+  background: #f7f7f5;
   display: grid;
   place-items: end center;
   overflow: hidden;
   flex-shrink: 0;
 }
 .pet-preview :deep(.home-pet) {
-  transform: translateY(0);
+  transform: scale(.68) translateY(5px);
+  transform-origin: bottom center;
   animation: none;
 }
 .pet-copy { flex: 1; min-width: 0; }
-.pet-name { font-size: 16px; font-weight: 760; color: #242421; }
-.pet-desc { margin-top: 6px; color: #777770; font-size: 13px; }
+.pet-name { font-size: 14px; font-weight: 760; color: #242421; }
+.pet-desc {
+  margin-top: 4px;
+  color: #777770;
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .pet-select {
   border: 0;
   border-radius: 999px;
   background: #f1f1ef;
   color: #242421;
-  min-height: 34px;
-  padding: 0 16px;
-  font-size: 13px;
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  flex-shrink: 0;
 }
 .pet-row.selected .pet-select {
   color: #9a9a93;
   background: #eeeeeb;
+}
+@media (max-width: 980px) {
+  .pet-list { grid-template-columns: 1fr; }
 }
 </style>

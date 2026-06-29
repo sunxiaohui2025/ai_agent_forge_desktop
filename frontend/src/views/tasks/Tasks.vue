@@ -44,7 +44,12 @@
           </button>
         </div>
       </article>
-      <button v-if="!loading && !rows.length" class="empty-task" @click="openCreate">新建第一个自动化任务</button>
+      <button v-if="!loading && !rows.length" class="empty-task" @click="openCreate">
+        <span class="empty-icon">+</span>
+        <span class="empty-title">还没有自动化任务</span>
+        <span class="empty-desc">把重复提醒、定时查询或固定工作流交给专家按时执行。</span>
+        <span class="empty-action">新建第一个任务</span>
+      </button>
     </div>
 
     <el-dialog v-model="visible" :title="editing ? '编辑任务' : '新建任务'" width="720px" :close-on-click-modal="false">
@@ -331,7 +336,40 @@ function relTime(iso: string | null | undefined) {
 .empty-task:hover { background: #e5e5e2; }
 .task-actions button:disabled { opacity: .55; cursor: wait; }
 .task-actions .danger { color: #b5392f; background: #f8ebe9; }
-.empty-task { min-height: 184px; border-radius: 18px; width: 100%; justify-content: center; }
+.empty-task {
+  min-height: 132px;
+  width: min(380px, 100%);
+  border: 1px dashed #e6e6e2;
+  border-radius: 16px;
+  background: #fafaf8;
+  color: #56554e;
+  padding: 18px;
+  justify-content: center;
+  align-items: flex-start;
+  flex-direction: column;
+  text-align: left;
+  gap: 5px;
+}
+.empty-task:hover {
+  background: #f6f6f3;
+  border-color: #ddddda;
+}
+.empty-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #eeeeeb;
+  color: #777770;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 760;
+  margin-bottom: 3px;
+}
+.empty-title { font-size: 13px; font-weight: 760; color: #3f3f3b; }
+.empty-desc { font-size: 12px; color: #8a8a84; line-height: 1.45; max-width: 300px; }
+.empty-action { margin-top: 4px; font-size: 12px; font-weight: 700; color: #56554e; }
 
 .muted { color: var(--m-text-secondary); }
 

@@ -1686,12 +1686,12 @@ function permHeadText(req: any): string {
 /* Permission approval cards */
 .perm-block { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 10px; }
 .perm-card {
-  border: 1px solid rgba(28, 28, 26, .08);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, .96);
+  border: 0;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .98);
   font-size: 13px;
   overflow: hidden;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .07), 0 1px 0 rgba(255, 255, 255, .9) inset;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .08), 0 1px 0 rgba(255, 255, 255, .9) inset;
   backdrop-filter: blur(18px) saturate(1.08);
   -webkit-backdrop-filter: blur(18px) saturate(1.08);
   transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
@@ -1702,15 +1702,15 @@ function permHeadText(req: any): string {
 }
 .perm-head {
   display: flex; align-items: center; gap: 8px;
-  min-height: 38px;
+  min-height: 36px;
   font-weight: 650; color: #242421;
-  padding: 10px 12px 8px;
+  padding: 12px 14px 6px;
 }
 .perm-head.clickable { cursor: pointer; }
 .perm-head.clickable:hover { background: rgba(28, 28, 26, .035); }
 .perm-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1748,15 +1748,14 @@ function permHeadText(req: any): string {
 .perm-caret { margin-left: 2px; font-size: 13px; color: #aaa9a2; }
 .perm-body { padding: 0 12px 12px 44px; }
 .perm-reason {
-  margin-top: -1px;
   color: #676761;
   line-height: 1.55;
 }
 .perm-summary {
-  margin: 9px 0 0;
+  margin: 8px 0 0;
   padding: 9px 10px;
   border-radius: 10px;
-  background: #f7f7f5;
+  background: #f6f6f3;
   border: 0;
   font-family: var(--m-font-mono, monospace);
   color: #3f3f3b;
@@ -1767,7 +1766,7 @@ function permHeadText(req: any): string {
   max-height: 156px;
   overflow: auto;
 }
-.perm-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.perm-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .perm-btn {
   height: 28px;
   border: 0;
@@ -1798,10 +1797,10 @@ function permHeadText(req: any): string {
   margin-bottom: 10px;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(28, 28, 26, .1);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, .9);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .1), 0 1px 3px rgba(0, 0, 0, .05);
+  border: 0;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, .58);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .09);
   backdrop-filter: blur(22px) saturate(1.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.12);
   overflow: hidden;
@@ -1811,11 +1810,10 @@ function permHeadText(req: any): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 16px;
+  padding: 10px 13px 6px;
   font-size: 12.5px;
   font-weight: 650;
   color: #242421;
-  border-bottom: 1px solid rgba(28, 28, 26, .07);
 }
 .perm-float-dot {
   width: 8px;
@@ -1844,20 +1842,18 @@ function permHeadText(req: any): string {
 .perm-float-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 8px;
   overflow-y: auto;
 }
 .perm-float .perm-card {
-  box-shadow: none;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .06);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  background: #fff;
-  border-color: rgba(28, 28, 26, .12);
+  background: rgba(255, 255, 255, .98);
 }
 .perm-float .perm-card.is-high {
-  border-color: rgba(217, 119, 6, .4);
-  background: #fffbf5;
+  background: #fffaf2;
 }
 .perm-float-enter-active,
 .perm-float-leave-active { transition: opacity .22s ease, transform .22s ease; }

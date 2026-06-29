@@ -102,19 +102,19 @@
 
     <!-- ░░ Center ░░ -->
     <div class="center">
-      <div class="corner-controls">
-        <el-tooltip :content="navCollapsed ? '展开侧边栏' : '收起侧边栏'" placement="bottom">
-          <button class="chrome-icon" @click="navCollapsed = !navCollapsed">
-            <span class="sidebar-glyph" />
-          </button>
-        </el-tooltip>
-        <el-tooltip content="新任务" placement="bottom">
-          <button class="chrome-icon" @click="onNewTask">
-            <el-icon :size="17"><Plus /></el-icon>
-          </button>
-        </el-tooltip>
-      </div>
       <header class="topbar">
+        <div class="corner-controls">
+          <el-tooltip :content="navCollapsed ? '展开侧边栏' : '收起侧边栏'" placement="bottom">
+            <button class="chrome-icon" @click="navCollapsed = !navCollapsed">
+              <span class="sidebar-glyph" />
+            </button>
+          </el-tooltip>
+          <el-tooltip content="新任务" placement="bottom">
+            <button class="chrome-icon" @click="onNewTask">
+              <el-icon :size="17"><Plus /></el-icon>
+            </button>
+          </el-tooltip>
+        </div>
         <div class="topbar-title">
           <div class="crumb">{{ currentSection }}</div>
           <div class="headline">{{ currentHeadline }}</div>
@@ -435,18 +435,11 @@ async function onLogout() {
   position: relative;
 }
 .corner-controls {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 120;
   display: flex;
   align-items: center;
   gap: 6px;
-  pointer-events: auto;
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
-}
-.nav-collapsed .corner-controls {
-  left: 76px;
 }
 .chrome-icon {
   width: 30px; height: 30px;
@@ -481,10 +474,16 @@ async function onLogout() {
   height: 56px;
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px 0 94px;
+  padding: 0 16px 0 14px;
   background: transparent;
   border-bottom: 0;
+  /* The whole top bar is a draggable window region on macOS. Interactive
+     children (.corner-controls, .topbar-actions and their buttons/links)
+     opt out via -webkit-app-region: no-drag below so they stay clickable. */
   -webkit-app-region: drag;
+}
+.nav-collapsed .topbar {
+  padding-left: 72px;
 }
 .topbar-title {
   min-width: 0;
@@ -582,6 +581,7 @@ async function onLogout() {
   display: flex;
   flex-direction: column;
   background: #ffffff;
+  -webkit-app-region: no-drag;
 }
 
 .nav-collapsed .nav {

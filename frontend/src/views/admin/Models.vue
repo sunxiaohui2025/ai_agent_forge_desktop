@@ -24,7 +24,12 @@
           <button class="danger" @click="onDelete(row)">删除</button>
         </div>
       </article>
-      <button v-if="!rows.length" class="empty-card" @click="openCreate">添加第一个模型</button>
+      <button v-if="!rows.length" class="empty-card" @click="openCreate">
+        <span class="empty-icon">+</span>
+        <span class="empty-title">还没有配置模型</span>
+        <span class="empty-desc">选择一个模型厂商，填入 API Key 后就可以在对话里使用。</span>
+        <span class="empty-action">添加第一个模型</span>
+      </button>
     </div>
 
     <el-dialog v-model="testVisible" title="模型测试" width="640px">
@@ -274,18 +279,43 @@ async function onTest(row: any) {
 .model-actions button:hover { background: #e5e5e2; }
 .model-actions .danger { color: #b5392f; background: #f8ebe9; }
 .empty-card {
-  min-height: 154px;
-  border-radius: 18px;
-  width: 100%;
-  border: 2px dashed #d0d0cc;
-  background: #fff;
-  color: #8a8a84;
+  min-height: 132px;
+  width: min(380px, 100%);
+  border: 1px dashed #e6e6e2;
+  border-radius: 16px;
+  background: #fafaf8;
+  color: #56554e;
   cursor: pointer;
-  font-size: 14px; font-weight: 580;
-  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 650;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  gap: 5px;
   transition: all .2s;
 }
-.empty-card:hover { border-color: #30302d; color: #30302d; background: #fafaf8; }
+.empty-card:hover {
+  background: #f6f6f3;
+  border-color: #ddddda;
+}
+.empty-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #eeeeeb;
+  color: #777770;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 760;
+  margin-bottom: 3px;
+}
+.empty-title { font-size: 13px; font-weight: 760; color: #3f3f3b; }
+.empty-desc { font-size: 12px; color: #8a8a84; line-height: 1.45; max-width: 300px; }
+.empty-action { margin-top: 4px; font-size: 12px; font-weight: 700; color: #56554e; }
 .preset-group { margin-bottom: 16px; }
 .preset-group-title {
   font-size: 12px; font-weight: 650; color: var(--m-text-secondary, #6b6b66);
