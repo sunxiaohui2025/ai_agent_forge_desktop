@@ -41,3 +41,5 @@ Override with `H3C_AGENT_DATA_DIR`.
 - Behind the GFW, install Electron via the mirror:
   `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install`
 - Packaging (electron-builder + PyInstaller sidecar) is a later phase.
+
+## 回答用中文
