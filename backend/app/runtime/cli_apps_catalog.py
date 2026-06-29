@@ -20,6 +20,25 @@ class CliAppDef(TypedDict, total=False):
 
 
 CLI_APPS_CATALOG: list[CliAppDef] = [
+     
+    {
+        "app_key": "lark-cli", "name": "飞书 Lark CLI", "icon": "🐦",
+        "summary": "飞书开放平台命令行，覆盖消息、文档、多维表格、日历等 200+ 命令",
+        "bin_names": ["lark-cli"],
+        "install_command": "npm install -g @larksuite/cli",
+        "categories": ["效率"], "homepage": "https://github.com/larksuite/cli",
+        "needs_auth": True,
+        "example_prompts": ["给某个群聊发一条消息", "查看我今天的日程安排"],
+    },
+    {
+        "app_key": "wecom-cli", "name": "企业微信 CLI", "icon": "💼",
+        "summary": "企业微信开放接口命令行，支持发送应用消息、群机器人推送、通讯录与日程管理",
+        "bin_names": ["wecom-cli", "wecom", "qywx-cli"],
+        "install_command": "npm install -g wecom-cli",
+        "categories": ["效率"], "homepage": "https://developer.work.weixin.qq.com",
+        "needs_auth": True,
+        "example_prompts": ["给运维群推送一条告警消息", "查询某个成员的部门信息"],
+    },
     {
         "app_key": "ffmpeg", "name": "FFmpeg", "icon": "🎬",
         "summary": "音视频处理瑞士军刀，支持转码、剪辑、合并、流处理",
@@ -52,58 +71,7 @@ CLI_APPS_CATALOG: list[CliAppDef] = [
         "categories": ["文档"], "homepage": "https://pandoc.org",
         "example_prompts": ["把 README.md 转成 PDF", "把网页 HTML 转成 Markdown"],
     },
-    {
-        "app_key": "jq", "name": "jq", "icon": "🧰",
-        "summary": "轻量级 JSON 处理器，支持查询、过滤、转换",
-        "bin_names": ["jq"],
-        "install_command": "brew install jq",
-        "categories": ["数据"], "homepage": "https://jqlang.github.io/jq/",
-        "example_prompts": ["从 package.json 提取所有依赖名称", "过滤 JSON 数组里 status=active 的项"],
-    },
-    {
-        "app_key": "ripgrep", "name": "ripgrep", "icon": "🔎",
-        "summary": "极速文本搜索工具，比 grep 快数倍",
-        "bin_names": ["rg"],
-        "install_command": "brew install ripgrep",
-        "categories": ["搜索"], "homepage": "https://github.com/BurntSushi/ripgrep",
-        "example_prompts": ["在项目里搜索所有 TODO 注释", "查某个函数在哪些文件里被调用"],
-    },
-    {
-        "app_key": "gh", "name": "GitHub CLI", "icon": "🐙",
-        "summary": "GitHub 官方命令行，管理仓库、PR、Issue、Release",
-        "bin_names": ["gh"],
-        "install_command": "brew install gh",
-        "categories": ["开发"], "homepage": "https://cli.github.com",
-        "needs_auth": True,
-        "example_prompts": ["列出我仓库里的 open PR", "创建一个新的 issue"],
-    },
-    {
-        "app_key": "stripe", "name": "Stripe CLI", "icon": "💳",
-        "summary": "支付集成命令行工具，资源管理、Webhook 调试、日志监控",
-        "bin_names": ["stripe"],
-        "install_command": "brew install stripe/stripe-cli/stripe",
-        "categories": ["效率"], "homepage": "https://stripe.com/docs/stripe-cli",
-        "needs_auth": True,
-        "example_prompts": ["把 Webhook 事件转发到本地服务器", "触发一个 checkout.session.completed 事件"],
-    },
-    {
-        "app_key": "lark-cli", "name": "飞书 Lark CLI", "icon": "🐦",
-        "summary": "飞书开放平台命令行，覆盖消息、文档、多维表格、日历等 200+ 命令",
-        "bin_names": ["lark-cli"],
-        "install_command": "npm install -g @larksuite/cli",
-        "categories": ["效率"], "homepage": "https://github.com/larksuite/cli",
-        "needs_auth": True,
-        "example_prompts": ["给某个群聊发一条消息", "查看我今天的日程安排"],
-    },
-    {
-        "app_key": "wecom-cli", "name": "企业微信 CLI", "icon": "💼",
-        "summary": "企业微信开放接口命令行，支持发送应用消息、群机器人推送、通讯录与日程管理",
-        "bin_names": ["wecom-cli", "wecom", "qywx-cli"],
-        "install_command": "npm install -g wecom-cli",
-        "categories": ["效率"], "homepage": "https://developer.work.weixin.qq.com",
-        "needs_auth": True,
-        "example_prompts": ["给运维群推送一条告警消息", "查询某个成员的部门信息"],
-    },
+   
 ]
 
 

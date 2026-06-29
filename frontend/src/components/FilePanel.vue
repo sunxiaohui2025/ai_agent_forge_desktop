@@ -75,7 +75,17 @@
 
     <!-- ░ Terminal tab ░ -->
     <div v-show="tab === 'term'" class="fp-term">
-      <TerminalView v-if="termMounted" :cwd="ws.current?.path || null" :session-key="ws.currentId || 0" />
+      <TerminalTabs
+        v-if="termMounted && terminalDock === 'side'"
+        :cwd="ws.current?.path || null"
+        :session-key="ws.currentId || 0"
+        dock="side"
+        @dock-bottom="emit('dockTerminalBottom')"
+      />
+      <div v-else-if="terminalDock === 'bottom'" class="fp-term-docked">
+        <div class="fp-term-docked-title">终端已切换到底部面板</div>
+        <button class="fp-term-docked-btn" @click="emit('dockTerminalBottom')">打开底部面板</button>
+      </div>
     </div>
     </div>
   </aside>
@@ -86,10 +96,12 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useWorkspace, type TreeEntry } from '@/stores/workspace'
 import FileTreeNode from './FileTreeNode.vue'
-import TerminalView from './TerminalView.vue'
+import TerminalTabs from './TerminalTabs.vue'
 
 const ws = useWorkspace()
-defineProps<{ collapsed?: boolean }>()
+const props = withDefaults(defineProps<{ collapsed?: boolean; terminalDock?: 'side' | 'bottom' }>(), {
+  terminalDock: 'side',
+})
 const query = ref('')
 const tab = ref<'files' | 'term'>('files')
 const termMounted = ref(false)
@@ -97,13 +109,18 @@ const termMounted = ref(false)
 function openTerm() {
   tab.value = 'term'
   termMounted.value = true   // lazy-mount the terminal on first open
+  if (props.terminalDock === 'bottom') emit('dockTerminalBottom')
 }
 function onOpenTerminal() {
   openTerm()
 }
 onMounted(() => window.addEventListener('workbuddy:open-terminal', onOpenTerminal))
 onBeforeUnmount(() => window.removeEventListener('workbuddy:open-terminal', onOpenTerminal))
-const emit = defineEmits<{ (e: 'preview', file: any): void; (e: 'toggle'): void }>()
+const emit = defineEmits<{
+  (e: 'preview', file: any): void
+  (e: 'toggle'): void
+  (e: 'dockTerminalBottom'): void
+}>()
 
 let searchTimer: any = null
 function onSearch() {
@@ -209,6 +226,30 @@ function openInFinder() {
 .fp-tab:hover { color: var(--m-text, #1c1c1a); }
 .fp-tab.active { color: var(--m-text, #1c1c1a); font-weight: 600; background: rgba(255,255,255,.68); }
 .fp-term { flex: 1; min-height: 0; }
+.fp-term-docked {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  color: var(--m-text-secondary, #56554e);
+  text-align: center;
+}
+.fp-term-docked-title { font-size: 13px; color: #777770; }
+.fp-term-docked-btn {
+  border: 0;
+  border-radius: 9px;
+  background: #f1f1ef;
+  color: #242421;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.fp-term-docked-btn:hover { background: #e5e5e2; }
 .fp-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 14px 8px; gap: 8px;

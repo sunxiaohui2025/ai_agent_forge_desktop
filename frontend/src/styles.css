@@ -59,8 +59,8 @@
                  Menlo, Consolas, monospace;
 
   /* ── Terminal / code wells ── */
-  --m-terminal-bg: #1b1b19;
-  --m-terminal-fg: #d8d7cf;
+  --m-terminal-bg: #ffffff;
+  --m-terminal-fg: #1c1c1a;
 }
 
 html, body, #app {

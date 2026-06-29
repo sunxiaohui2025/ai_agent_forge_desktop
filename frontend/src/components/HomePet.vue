@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="home-pet" :class="[`pet-${activeKind}`]" aria-hidden="true">
+  <div v-if="visible" class="home-pet" :class="[`pet-${activeKind}`, { 'is-preview': preview }]" aria-hidden="true">
     <div class="pet-body">
       <span class="eye l" />
       <span class="eye r" />
@@ -26,6 +26,19 @@ const visible = computed(() => props.preview || pet.enabled)
   place-items: end center;
   pointer-events: none;
   animation: pet-peek 13.5s ease-in-out infinite;
+}
+.home-pet.is-preview {
+  animation: none !important;
+  width: 86px;
+  height: 74px;
+  place-items: center;
+  transform: none !important;
+  overflow: visible;
+}
+.home-pet.is-preview .pet-body {
+  animation: none !important;
+  transform: scale(.78);
+  transform-origin: center center;
 }
 .pet-body {
   position: relative;

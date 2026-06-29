@@ -320,8 +320,8 @@ function openCreate() {
 function openEdit(row: any) {
   editing.value = row
   Object.assign(form, emptyForm(), JSON.parse(JSON.stringify(row)))
-  if (form.max_turns == null) form.max_turns = 15
-  if (!form.effort) form.effort = 'low'
+  if (form.max_turns == null) form.max_turns = 100
+  if (!form.effort) form.effort = 'medium'
   const policy = row.upload_policy_json || {}
   extText.value = (policy.allowed_ext || []).join(',')
   maxSizeMb.value = Number(policy.max_size_mb || 0)

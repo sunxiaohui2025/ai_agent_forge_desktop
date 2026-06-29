@@ -91,19 +91,17 @@ const pet = usePet()
   box-shadow: 0 10px 26px rgba(0,0,0,.04);
 }
 .pet-preview {
-  width: 62px;
-  height: 58px;
+  width: 86px;
+  height: 74px;
   border: 0;
   border-radius: 13px;
   background: #f7f7f5;
   display: grid;
-  place-items: end center;
-  overflow: hidden;
+  place-items: center;
+  overflow: visible;
   flex-shrink: 0;
 }
 .pet-preview :deep(.home-pet) {
-  transform: scale(.68) translateY(5px);
-  transform-origin: bottom center;
   animation: none;
 }
 .pet-copy { flex: 1; min-width: 0; }

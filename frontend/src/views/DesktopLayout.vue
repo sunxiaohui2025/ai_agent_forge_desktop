@@ -100,57 +100,79 @@
       </div>
     </aside>
 
-    <!-- ░░ Center ░░ -->
-    <div class="center">
-      <header class="topbar">
-        <div class="corner-controls">
-          <el-tooltip :content="navCollapsed ? '展开侧边栏' : '收起侧边栏'" placement="bottom">
-            <button class="chrome-icon" @click="navCollapsed = !navCollapsed">
-              <span class="sidebar-glyph" />
-            </button>
-          </el-tooltip>
-          <el-tooltip content="新任务" placement="bottom">
-            <button class="chrome-icon" @click="onNewTask">
-              <el-icon :size="17"><Plus /></el-icon>
-            </button>
-          </el-tooltip>
+    <div class="work-area">
+      <div class="work-main">
+        <!-- ░░ Center ░░ -->
+        <div class="center">
+          <header class="topbar">
+            <div class="corner-controls">
+              <el-tooltip :content="navCollapsed ? '展开侧边栏' : '收起侧边栏'" placement="bottom">
+                <button class="chrome-icon" @click="navCollapsed = !navCollapsed">
+                  <span class="sidebar-glyph" />
+                </button>
+              </el-tooltip>
+              <el-tooltip content="新任务" placement="bottom">
+                <button class="chrome-icon" @click="onNewTask">
+                  <el-icon :size="17"><Plus /></el-icon>
+                </button>
+              </el-tooltip>
+            </div>
+            <div class="topbar-title">
+              <div class="crumb">{{ currentSection }}</div>
+              <div class="headline">{{ currentHeadline }}</div>
+            </div>
+            <div class="topbar-actions">
+              <span class="status-pill">
+                <span class="status-dot" />
+                {{ ws.current ? ws.current.name : '本地工作台' }}
+              </span>
+              <NotificationBell />
+              <router-link to="/settings" class="top-icon" title="设置">
+                <el-icon :size="16"><Setting /></el-icon>
+              </router-link>
+              <el-tooltip
+                v-if="showFilePanel"
+                :content="filePanelCollapsed ? '展开文件工具栏' : '收起文件工具栏'"
+                placement="bottom"
+              >
+                <button class="top-icon file-toggle" @click="filePanelCollapsed = !filePanelCollapsed">
+                  <span class="file-glyph" />
+                </button>
+              </el-tooltip>
+            </div>
+          </header>
+          <main class="view-shell">
+            <router-view />
+          </main>
         </div>
-        <div class="topbar-title">
-          <div class="crumb">{{ currentSection }}</div>
-          <div class="headline">{{ currentHeadline }}</div>
-        </div>
-        <div class="topbar-actions">
-          <span class="status-pill">
-            <span class="status-dot" />
-            {{ ws.current ? ws.current.name : '本地工作台' }}
-          </span>
-          <NotificationBell />
-          <router-link to="/settings" class="top-icon" title="设置">
-            <el-icon :size="16"><Setting /></el-icon>
-          </router-link>
-          <el-tooltip
-            v-if="showFilePanel"
-            :content="filePanelCollapsed ? '展开文件工具栏' : '收起文件工具栏'"
-            placement="bottom"
-          >
-            <button class="top-icon file-toggle" @click="filePanelCollapsed = !filePanelCollapsed">
-              <span class="file-glyph" />
-            </button>
-          </el-tooltip>
-        </div>
-      </header>
-      <main class="view-shell">
-        <router-view />
-      </main>
-    </div>
 
-    <!-- ░░ Right file panel (only for tasks with a workspace) ░░ -->
-    <FilePanel
-      v-if="showFilePanel"
-      :collapsed="filePanelCollapsed"
-      @toggle="filePanelCollapsed = !filePanelCollapsed"
-      @preview="onPreview"
-    />
+        <!-- ░░ Right file panel (only for tasks with a workspace) ░░ -->
+        <FilePanel
+          v-if="showFilePanel"
+          :collapsed="filePanelCollapsed"
+          :terminal-dock="terminalDock"
+          @toggle="filePanelCollapsed = !filePanelCollapsed"
+          @preview="onPreview"
+          @dock-terminal-bottom="openBottomTerminal"
+        />
+      </div>
+
+      <section
+        v-if="showBottomTerminal"
+        class="bottom-terminal-shell"
+        :style="{ height: `${bottomTerminalHeight}px` }"
+      >
+        <div class="bottom-terminal-resize" title="拖拽调整终端高度" @pointerdown="startResizeBottomTerminal" />
+        <TerminalTabs
+          class="bottom-terminal"
+          :cwd="ws.current?.path || null"
+          :session-key="ws.currentId || 0"
+          dock="bottom"
+          @dock-side="dockTerminalSide"
+          @close="bottomTerminalOpen = false"
+        />
+      </section>
+    </div>
     <WsFilePreview />
   </div>
 </template>
@@ -165,6 +187,7 @@ import { useAuth } from '@/stores/auth'
 import FilePanel from '@/components/FilePanel.vue'
 import WsFilePreview from '@/components/WsFilePreview.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import TerminalTabs from '@/components/TerminalTabs.vue'
 import { Delete } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -174,11 +197,18 @@ const chat = useChat()
 const ws = useWorkspace()
 const navCollapsed = ref(false)
 const filePanelCollapsed = ref(false)
+const terminalDock = ref<'side' | 'bottom'>('side')
+const bottomTerminalOpen = ref(false)
+const bottomTerminalHeight = ref(248)
 const _plat = typeof window !== 'undefined' && (window as any).desktop?.platform
 const isWin = ref(_plat === 'win32')
 
 function onOpenTerminalPanel() {
-  filePanelCollapsed.value = false
+  if (terminalDock.value === 'bottom') {
+    bottomTerminalOpen.value = true
+  } else {
+    filePanelCollapsed.value = false
+  }
 }
 
 onMounted(async () => {
@@ -195,6 +225,37 @@ function tasksOf(wid: number) {
 
 const showFilePanel = computed(() =>
   route.path === '/chat' && ws.currentId != null && ws.isDesktop)
+const showBottomTerminal = computed(() =>
+  showFilePanel.value && terminalDock.value === 'bottom' && bottomTerminalOpen.value)
+
+function openBottomTerminal() {
+  terminalDock.value = 'bottom'
+  bottomTerminalOpen.value = true
+}
+
+function dockTerminalSide() {
+  terminalDock.value = 'side'
+  bottomTerminalOpen.value = false
+  filePanelCollapsed.value = false
+}
+
+function startResizeBottomTerminal(e: PointerEvent) {
+  e.preventDefault()
+  const startY = e.clientY
+  const startHeight = bottomTerminalHeight.value
+  const maxHeight = Math.max(280, Math.floor(window.innerHeight * 0.72))
+  const minHeight = 170
+  const onMove = (ev: PointerEvent) => {
+    const next = startHeight - (ev.clientY - startY)
+    bottomTerminalHeight.value = Math.min(maxHeight, Math.max(minHeight, next))
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+}
 
 const currentSection = computed(() => {
   if (route.path.startsWith('/plugins')) return 'Extensions'
@@ -424,6 +485,20 @@ async function onLogout() {
 .nav-foot-caret { margin-left: auto; color: var(--m-text-tertiary); }
 
 /* ── Center ── */
+.work-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+.work-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
 .center {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column;
@@ -433,6 +508,44 @@ async function onLogout() {
   box-shadow: none;
   overflow: hidden;
   position: relative;
+}
+.bottom-terminal-shell {
+  position: relative;
+  flex-shrink: 0;
+  min-height: 170px;
+  max-height: 72vh;
+  border-top: 1px solid #eeeeeb;
+  background: #ffffff;
+  box-shadow: none;
+}
+.bottom-terminal-resize {
+  position: absolute;
+  z-index: 5;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  cursor: ns-resize;
+  background: transparent;
+}
+.bottom-terminal-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 42px;
+  height: 3px;
+  border-radius: 999px;
+  background: transparent;
+  transform: translateX(-50%);
+  transition: background .12s;
+}
+.bottom-terminal-resize:hover::after {
+  background: #d8d8d4;
+}
+.bottom-terminal {
+  height: 100%;
+  min-height: 0;
 }
 .corner-controls {
   display: flex;
