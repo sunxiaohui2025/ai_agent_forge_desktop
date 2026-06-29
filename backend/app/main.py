@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio
 import logging
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -144,64 +146,71 @@ async def _seed_local_user() -> None:
 # Built-in models shipped with the app. Created on first boot (idempotent —
 # skipped if a model with the same `code` already exists). The default expert
 # is auto-bound to the first one so chat works out of the box.
-BUILTIN_MODELS: list[dict] = [
-    {
-        "code": "qwen3.5-397b-a17b",
-        "provider": "openai-compatible",
-        "model_id": "qwen3.5-397b-a17b",
-        "base_url": "http://1.181.141.96:6018/qwen3.5-397b-a17b",
-        "api_key": "Qwen3.5-397b-a17b",
-        "max_tokens": 153600,
-        "extra_params_json": {"enable_thinking": False},
-    },
-    {
-        "code": "Kimi-K2.6",
-        "provider": "openai-compatible",
-        "model_id": "Kimi-K2.6",
-        "base_url": "http://1.181.141.96:6018/kimi-k2.6",
-        "api_key": "Kimi-K2.6",
-        "max_tokens": 153600,
-        "extra_params_json": {"enable_thinking": False},
-    }
-]
+#
+# The default list is EMPTY — users provision their own models via the admin UI.
+# To ship pre-seeded models for an internal deployment, set the
+# H3C_BUILTIN_MODELS env var to a JSON array:
+#   export H3C_BUILTIN_MODELS='[{"code":"my-model","provider":"openai-compatible",...}]'
+# Or place a builtin_models.json file in the backend/ directory (gitignored).
+
+
+def _load_builtin_models_from_env() -> list[dict]:
+    """Load built-in models from env var or a local json file (gitignored).
+
+    Reads H3C_BUILTIN_MODELS (JSON string) or backend/builtin_models.json.
+    Returns an empty list when neither is present — the user creates models
+    manually in the admin UI.  This avoids shipping sensitive credentials in
+    the public GitHub repo.
+    """
+    import json
+    # ── Env-var override (highest priority) ──────────────────────
+    raw = os.environ.get("H3C_BUILTIN_MODELS", "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [m for m in parsed if isinstance(m, dict)]
+        except json.JSONDecodeError:
+            logging.getLogger(__name__).warning(
+                "H3C_BUILTIN_MODELS is not valid JSON — ignored"
+            )
+    # ── Local file (gitignored) ──────────────────────────────────
+    file_path = Path(__file__).parent.parent / "builtin_models.json"
+    if file_path.is_file():
+        try:
+            parsed = json.loads(file_path.read_text(encoding="utf-8"))
+            if isinstance(parsed, list):
+                return [m for m in parsed if isinstance(m, dict)]
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "builtin_models.json could not be parsed — ignored"
+            )
+    return []
 
 
 async def _seed_builtin_models() -> None:
-    """Create the bundled built-in models on first boot, and SELF-HEAL their
-    API keys on every boot.
+    """Create built-in models from env / local file on first boot (idempotent).
 
-    The built-in models are local deployments whose API key is a fixed,
-    well-known value baked into ``BUILTIN_MODELS`` (any value is accepted by the
-    local server). Because the stored key is Fernet-encrypted, a ciphertext
-    written in one environment (e.g. dev with an explicit ``ENCRYPTION_KEY``)
-    can fail to decrypt in another (e.g. the packaged app with no ``.env``),
-    forcing the user to re-enter the key every time. To avoid that, on each boot
-    we verify the stored key decrypts to the expected built-in value and, if
-    not, transparently re-encrypt it with the current environment's key. The
-    user therefore never has to touch these two models.
+    By default no models are shipped — users provision their own in the admin UI.
+    To pre-seed models for an internal/enterprise deployment, set
+    H3C_BUILTIN_MODELS or create backend/builtin_models.json (gitignored).
     """
+    specs = _load_builtin_models_from_env()
+    if not specs:
+        return  # nothing to seed — user adds models manually
+
     from sqlalchemy import select
     from .db.session import SessionLocal
     from .db.models import Model, Agent
-    from .core.crypto import encrypt_str, decrypt_str
+    from .core.crypto import encrypt_str
 
     async with SessionLocal() as db:
         first_model_id: int | None = None
-        for spec in BUILTIN_MODELS:
+        for spec in specs:
             existing = (await db.execute(
                 select(Model).where(Model.code == spec["code"]))).scalar_one_or_none()
             if existing is not None:
                 first_model_id = first_model_id or existing.id
-                # Self-heal: make sure the stored key still decrypts to the
-                # known built-in value in THIS environment; re-encrypt if not.
-                expected = spec.get("api_key")
-                if expected:
-                    try:
-                        current = decrypt_str(existing.api_key_enc) if existing.api_key_enc else None
-                    except Exception:
-                        current = None
-                    if current != expected:
-                        existing.api_key_enc = encrypt_str(expected)
                 if not existing.enabled:
                     existing.enabled = True
                 continue
@@ -218,7 +227,7 @@ async def _seed_builtin_models() -> None:
             db.add(m)
             await db.flush()
             first_model_id = first_model_id or m.id
-        # Bind the default expert to the first built-in model if it has none.
+        # Bind the default expert to the first seeded model if it has none.
         if first_model_id is not None:
             default_agent = (await db.execute(
                 select(Agent).where(Agent.is_default == True))  # noqa: E712

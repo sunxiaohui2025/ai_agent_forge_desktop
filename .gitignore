@@ -13,6 +13,7 @@ backend/.venv/
 backend/.pytest_cache/
 backend/build/
 backend/dist/
+backend/builtin_models.json
 
 frontend/node_modules/
 frontend/dist/

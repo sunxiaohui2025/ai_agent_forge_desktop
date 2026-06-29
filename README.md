@@ -257,7 +257,7 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 - Electron 主进程拉起 Python 后端作为 sidecar(稳定端口 47900),等待 `/api/health` 后加载前端
 - 数据库默认 SQLite(`~/.h3c-agent/app.db`),storage 同目录;单机用户回落为 id=1
-- 启动时幂等建表 + 种子(默认账号 / 默认智能体 / 内置模型),开箱即用
+- 启动时幂等建表 + 种子(默认账号 / 默认智能体),开箱即用（模型需用户在管理界面自行添加）
 - 生产打包:Python 后端经 PyInstaller 冻结为单目录可执行文件,用户无需安装 Python;前端构建后由后端同源托管
 
 ---
