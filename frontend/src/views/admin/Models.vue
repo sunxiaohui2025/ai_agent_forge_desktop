@@ -132,7 +132,7 @@ const extraText = ref('{}')
 function emptyForm() {
   return {
     code: '', provider: 'openai-compatible', model_id: '', base_url: '',
-    api_key: '', max_tokens: 8192, enabled: true, extra_params: {},
+    api_key: '', max_tokens: 50000, enabled: true, extra_params: { enable_thinking: false },
     _presetName: '', _note: '', _apiKeyUrl: '', _models: [] as string[],
   }
 }
@@ -178,7 +178,7 @@ onMounted(async () => {
 
 // Step 1 → open the vendor picker.
 function openCreate() {
-  if (!presets.value.length) { editing.value = null; Object.assign(form, emptyForm()); extraText.value = '{}'; visible.value = true; return }
+  if (!presets.value.length) { editing.value = null; Object.assign(form, emptyForm()); extraText.value = '{\n  "enable_thinking": false\n}'; visible.value = true; return }
   presetVisible.value = true
 }
 // Step 2 → vendor chosen, pre-fill the form.
@@ -194,7 +194,9 @@ function choosePreset(p: any) {
     _apiKeyUrl: p.api_key_url || '',
     _models: p.models || [],
   })
-  extraText.value = '{}'
+  extraText.value = p.protocol === 'anthropic'
+    ? '{\n  "thinking": { "type": "disabled" }\n}'
+    : '{\n  "enable_thinking": false\n}'
   presetVisible.value = false
   visible.value = true
 }
@@ -264,20 +266,26 @@ async function onTest(row: any) {
 .model-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #777770; font-size: 12px; }
 .model-meta span { padding: 4px 8px; border-radius: 999px; background: #f6f6f3; }
 .model-actions { display: flex; gap: 8px; margin-top: auto; }
-.model-actions button,
-.empty-card {
+.model-actions button {
   border: 0; background: #f1f1ef; color: #30302d;
   border-radius: 999px; height: 30px; padding: 0 12px;
   cursor: pointer; font-size: 12px; font-weight: 650;
 }
-.model-actions button:hover,
-.empty-card:hover { background: #e5e5e2; }
+.model-actions button:hover { background: #e5e5e2; }
 .model-actions .danger { color: #b5392f; background: #f8ebe9; }
 .empty-card {
   min-height: 154px;
   border-radius: 18px;
   width: 100%;
+  border: 2px dashed #d0d0cc;
+  background: #fff;
+  color: #8a8a84;
+  cursor: pointer;
+  font-size: 14px; font-weight: 580;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
 }
+.empty-card:hover { border-color: #30302d; color: #30302d; background: #fafaf8; }
 .preset-group { margin-bottom: 16px; }
 .preset-group-title {
   font-size: 12px; font-weight: 650; color: var(--m-text-secondary, #6b6b66);

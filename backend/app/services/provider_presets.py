@@ -73,26 +73,6 @@ PROVIDER_PRESETS: list[dict] = [
         "api_key_url": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
         "icon": "minimax",
     },
-    {
-        "key": "baichuan",
-        "name": "百川 Baichuan",
-        "group": "国内",
-        "protocol": "openai-compatible",
-        "base_url": "https://api.baichuan-ai.com/v1",
-        "models": ["Baichuan4", "Baichuan3-Turbo"],
-        "api_key_url": "https://platform.baichuan-ai.com/console/apikey",
-        "icon": "baichuan",
-    },
-    {
-        "key": "siliconflow",
-        "name": "硅基流动 SiliconFlow",
-        "group": "国内",
-        "protocol": "openai-compatible",
-        "base_url": "https://api.siliconflow.cn/v1",
-        "models": ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "deepseek-ai/DeepSeek-R1"],
-        "api_key_url": "https://cloud.siliconflow.cn/account/ak",
-        "icon": "siliconflow",
-    },
 
     # ── 国际（International） ──
     {
