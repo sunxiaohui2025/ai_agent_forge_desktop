@@ -1,7 +1,7 @@
 <template>
   <div class="dlayout" :class="{ 'nav-collapsed': navCollapsed, 'file-collapsed': filePanelCollapsed }">
     <!-- ░░ Left nav ░░ -->
-    <aside class="nav">
+    <aside class="nav" :class="{ 'os-win': isWin }">
       <div class="nav-top">
         <div class="nav-product">
           <span class="nav-product-name">Agent Forge</span>
@@ -174,6 +174,8 @@ const chat = useChat()
 const ws = useWorkspace()
 const navCollapsed = ref(false)
 const filePanelCollapsed = ref(false)
+const _plat = typeof window !== 'undefined' && (window as any).desktop?.platform
+const isWin = ref(_plat === 'win32')
 
 function onOpenTerminalPanel() {
   filePanelCollapsed.value = false
@@ -317,9 +319,13 @@ async function onLogout() {
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 48px 18px 4px 22px;
+  padding: 48px 18px 4px 22px; /* macOS: room for traffic-light buttons */
   min-height: 58px;
   -webkit-app-region: drag;
+}
+.os-win .nav-top {
+  padding: 12px 18px 10px 22px;
+  min-height: unset;
 }
 .nav-product {
   display: flex;

@@ -8,7 +8,7 @@
  *  3. Repair PATH (GUI apps don't inherit the user's shell PATH).
  *  4. Wait for /api/health, then load the renderer (vite dev URL or built dist).
  */
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -402,6 +402,7 @@ async function ensureBackend() {
 
 // ── Boot ─────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   registerIpc();
   try {
     await startBackend();
