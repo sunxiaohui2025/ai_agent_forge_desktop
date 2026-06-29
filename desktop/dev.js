@@ -18,7 +18,10 @@ const FRONTEND_DIR = path.join(ROOT, 'frontend');
 const DEV_BACKEND_PORT = process.env.H3C_BACKEND_PORT || '47900';
 
 function run(cmd, args, opts) {
-  const p = spawn(cmd, args, { stdio: 'inherit', ...opts });
+  const isWin = process.platform === 'win32';
+  // On Windows, spawn needs shell:true to execute npm.cmd / npx.cmd batch files.
+  const spawnOpts = { stdio: 'inherit', shell: isWin, ...opts };
+  const p = spawn(cmd, args, spawnOpts);
   p.on('exit', (code) => {
     if (code && code !== 0) console.error(`[dev] ${cmd} exited ${code}`);
   });

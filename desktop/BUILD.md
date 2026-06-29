@@ -6,12 +6,25 @@
 - Vue 前端 → 生产构建，由后端同源提供（resources/frontend）
 
 ## 一次性准备
+
+**macOS**
 ```bash
 # 后端打包工具
 cd backend && .venv/bin/python -m pip install pyinstaller
 
 # 桌面依赖（含 electron-builder）
 cd ../desktop && npm install
+```
+
+**Windows（PowerShell）**
+```powershell
+# 后端打包工具
+cd backend
+.venv\Scripts\python -m pip install pyinstaller
+
+# 桌面依赖（含 electron-builder + cross-env）
+cd ..\desktop
+npm install
 ```
 
 ## 构建 macOS 安装包（在 macOS 上执行）
@@ -28,15 +41,21 @@ npm run dist:mac
 # 在 Windows 上，先准备好同样的 backend/.venv（pip install -e . + pyinstaller）
 cd desktop
 npm run dist:win
-# 产物：desktop/release/H3C Agent-Setup-<版本>.exe (NSIS 安装向导)
+# 产物：desktop\release\H3C Agent-Setup-<版本>.exe (NSIS 安装向导)
 ```
 
-## 分步命令
-```bash
-npm run build:frontend     # 构建 Vue → frontend/dist
-npm run build:backend      # PyInstaller → backend/dist/h3c-agent-backend
-npm run prepare:resources  # 拷贝上述产物到 desktop/resources/
-```
+## 分步命令（跨平台）
+
+打包命令 `npm run dist:win` / `dist:mac` 内部依次执行以下步骤：
+
+| 步骤 | 命令 | 说明 |
+|------|------|------|
+| 1. 构建前端 | `npm run build:frontend` | `vue-tsc && vite build` → `frontend/dist` |
+| 2. 构建后端 | `npm run build:backend` | `node build-backend.js` 自动找到 venv Python → 运行 PyInstaller |
+| 3. 准备资源 | `npm run prepare:resources` | `node prepare-resources.mjs` 拷贝产物到 `desktop/resources/` |
+| 4. 打包安装程序 | `electron-builder --win / --mac` | 生成 .exe(Nsis) / .dmg |
+
+> `build-backend.js` 是跨平台的 Node 脚本，会自动检测当前操作系统（macOS 用 `.venv/bin/python`，Windows 用 `.venv\Scripts\python.exe`），无需手动指定 Python 路径。
 
 ## 运行时架构（生产）
 1. Electron 主进程在固定端口启动 `resources/backend/h3c-agent-backend`

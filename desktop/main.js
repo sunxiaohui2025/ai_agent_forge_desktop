@@ -36,23 +36,35 @@ function dataDir() {
 // ── PATH repair ──────────────────────────────────────────────────
 function repairedEnv() {
   const home = app.getPath('home');
-  const extra = [
-    '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin',
-    path.join(home, '.local', 'bin'),
-    path.join(home, '.claude', 'bin'),
-    path.join(home, '.npm-global', 'bin'),
-  ];
+  const isWin = process.platform === 'win32';
+  const extra = isWin
+    ? [
+        path.join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python312'),
+        path.join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python311'),
+        path.join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python310'),
+        path.join(home, '.local', 'bin'),
+      ]
+    : [
+        '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin',
+        path.join(home, '.local', 'bin'),
+        path.join(home, '.claude', 'bin'),
+        path.join(home, '.npm-global', 'bin'),
+      ];
   const cur = process.env.PATH || '';
-  const merged = Array.from(new Set([...cur.split(':'), ...extra].filter(Boolean))).join(':');
+  const delimiter = isWin ? ';' : ':';
+  const merged = Array.from(new Set([...cur.split(delimiter), ...extra].filter(Boolean))).join(delimiter);
   return { ...process.env, PATH: merged };
 }
 
 // ── Python interpreter resolution ────────────────────────────────
 function resolvePython() {
-  const venvPy = path.join(BACKEND_DIR, '.venv', 'bin', 'python');
+  const isWin = process.platform === 'win32';
+  const venvPy = isWin
+    ? path.join(BACKEND_DIR, '.venv', 'Scripts', 'python.exe')
+    : path.join(BACKEND_DIR, '.venv', 'bin', 'python');
   if (fs.existsSync(venvPy)) return venvPy;
   if (process.env.H3C_PYTHON && fs.existsSync(process.env.H3C_PYTHON)) return process.env.H3C_PYTHON;
-  return 'python3';
+  return isWin ? 'python' : 'python3';
 }
 
 // ── Port probing ─────────────────────────────────────────────────
@@ -134,21 +146,27 @@ function rendererURL() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const isMac = process.platform === 'darwin';
+  const winOpts = {
     width: 1440,
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: '',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 16 },
+    title: 'H3C Agent',
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  };
+  // macOS-only window chrome
+  if (isMac) {
+    winOpts.titleBarStyle = 'hiddenInset';
+    winOpts.trafficLightPosition = { x: 18, y: 16 };
+    winOpts.title = '';
+  }
+  mainWindow = new BrowserWindow(winOpts);
   mainWindow.loadURL(rendererURL());
   // DevTools off by default — it floods the console with harmless internal
   // warnings (Unknown VE context / Autofill.enable). Opt in via H3C_DEVTOOLS=1.
@@ -411,7 +429,15 @@ app.whenReady().then(async () => {
 
 function stopBackend() {
   if (backendProc && !backendProc.killed) {
-    try { backendProc.kill('SIGTERM'); } catch (_) {}
+    try {
+      if (process.platform === 'win32') {
+        // On Windows, SIGTERM isn't supported; use taskkill to cleanly stop the
+        // process tree (PyInstaller may spawn children).
+        spawn('taskkill', ['/pid', String(backendProc.pid), '/f', '/t'], { stdio: 'ignore' });
+      } else {
+        backendProc.kill('SIGTERM');
+      }
+    } catch (_) {}
   }
   backendProc = null;
 }

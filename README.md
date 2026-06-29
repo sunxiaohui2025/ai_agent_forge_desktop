@@ -12,9 +12,10 @@
 |---|---|---|
 | macOS (Apple Silicon) | [Agent.Forge-0.1.0-arm64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-arm64.dmg) | M1/M2/M3 等 ARM 芯片 |
 | macOS (Intel) | [Agent.Forge-0.1.0-x64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-x64.dmg) | Intel 芯片 Mac |
-| Windows | 即将提供 | 关注 [Releases](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases) |
+| Windows (x64) | [H3C Agent-Setup-0.1.0.exe](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/H3C-Agent-Setup-0.1.0.exe) | NSIS 安装向导，支持自定义安装路径 |
 
 > macOS 安装包未签名，首次打开请**右键 →「打开」**，或在「系统设置 → 隐私与安全性」中放行。
+> Windows 未签名安装包首次运行可能被 Windows Defender 拦截，点击「更多信息 → 仍要运行」即可。
 > 装好后，应用内「设置 → 检查更新」会自动比对最新 Release 版本并引导下载。
 
 ## 核心特点
@@ -263,53 +264,151 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 ## 四、快速开始
 
-桌面端不依赖服务器与 Docker,只需 Python(后端)+ Node(前端/Electron)即可本地跑起来。
+桌面端不依赖服务器与 Docker，只需 Python（≥3.11）+ Node.js（≥18）即可本地跑起来。
 
-### 4.1 开发模式（推荐先跑通）
+### 4.1 环境准备（一次性）
+
+**macOS**
 
 ```bash
-# 后端依赖
+# 后端：Python 虚拟环境 + 依赖
 cd backend
-python -m venv .venv && source .venv/bin/activate
-cp .env.example .env       # 填 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY（均可选，缺省也能跑）
+python3 -m venv .venv && source .venv/bin/activate
+cp .env.example .env          # 填 JWT_SECRET / ENCRYPTION_KEY 等（缺省也能跑）
 pip install -e .
-# SQLite 模式：表会在首次启动时自动创建 + 种子，无需手动迁移
 
-# 前端依赖
+# 前端
 cd ../frontend
 npm install
 
-# 桌面壳 + 一键拉起（Python sidecar 47900 + Vite + Electron 窗口）
+# 桌面壳
 cd ../desktop
 npm install
-npm run dev
 ```
 
-数据全部保存在 `~/.h3c-agent`（SQLite + storage），无需登录服务器，离线可用。
+**Windows（PowerShell）**
 
-### 4.2 纯后端 / 前端分开调试（无 Electron）
+```powershell
+# 后端：Python 虚拟环境 + 依赖
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+copy .env.example .env        # 填 JWT_SECRET / ENCRYPTION_KEY 等（缺省也能跑）
+pip install -e .
 
-```bash
-# 后端（FastAPI :8000，SQLite 自动建表）
-cd backend && source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+# 前端
+cd ..\frontend
+npm install
 
-# 前端（Vite :5173，反代到 8000）
-cd frontend && npm run dev
+# 桌面壳
+cd ..\desktop
+npm install
 ```
 
-### 4.3 打包安装程序（macOS / Windows）
+### 4.2 开发模式（一键拉起，推荐先跑通）
 
-桌面应用把 Electron 壳 + PyInstaller 冻结的 Python 后端 + Vue 前端一起塞进安装包，用户**无需安装 Python**。
+同时在 Electron 窗口里跑前后端，数据和浏览器环境一样（Vite HMR 热更新也生效）。
+
+**macOS**
 
 ```bash
 cd desktop
-npm run dist:mac     # 产物：desktop/release/Agent Forge-<版本>-arm64.dmg / -x64.dmg
-# Windows 必须在 Windows 机器（或 CI）上执行：
-npm run dist:win     # 产物：desktop/release/Agent Forge-Setup-<版本>.exe
+npm run dev
 ```
 
-完整打包说明（PyInstaller 准备、代码签名 / 公证、图标）见 [`desktop/BUILD.md`](desktop/BUILD.md)。
+**Windows（PowerShell）**
+
+```powershell
+cd desktop
+npm run dev
+```
+
+这会自动启动：
+1. Vite 前端开发服务器 → `http://localhost:5173`
+2. Python FastAPI 后端 → 端口 `47900`
+3. Electron 窗口 → 加载 Vite 页面
+
+数据全部保存在 `~/.h3c-agent`（SQLite + storage），无需登录服务器，离线可用。首次启动自动创建数据库表 + 种子账号（`admin` / `admin123`）。
+
+### 4.3 纯后端 / 前端分开调试
+
+不需要 Electron 窗口时，可以在浏览器里调试前端，方便排查网络请求等问题。
+
+**macOS**
+
+```bash
+# 终端1：后端（FastAPI :8000，SQLite 自动建表）
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# 终端2：前端（Vite :5173，API 请求反代到 8000）
+cd frontend && npm run dev
+```
+
+**Windows（PowerShell）**
+
+```powershell
+# 终端1：后端
+cd backend
+.venv\Scripts\activate
+uvicorn app.main:app --reload --port 8000
+
+# 终端2：前端
+cd frontend
+npm run dev
+```
+
+然后浏览器访问 `http://localhost:5173`。
+
+### 4.4 打包安装程序
+
+桌面应用把 Electron 壳 + PyInstaller 冻结的 Python 后端 + Vue 前端一起塞进安装包，用户**无需安装 Python**。
+
+> ⚠️ **PyInstaller 不支持交叉编译**：打包哪个平台就必须在哪个平台上执行。
+
+**macOS 打包**
+
+```bash
+cd desktop
+
+# 初次打包需先装好 PyInstaller
+cd ../backend && source .venv/bin/activate && pip install pyinstaller && deactivate
+cd ../desktop
+
+npm run dist:mac
+# 产物：desktop/release/H3C Agent-<版本>-arm64.dmg  和  -x64.dmg
+```
+
+**Windows 打包（必须在 Windows 上执行）**
+
+```powershell
+cd desktop
+
+# 初次打包需先装好 PyInstaller
+cd ..\backend
+.venv\Scripts\activate
+pip install pyinstaller
+deactivate
+cd ..\desktop
+
+npm run dist:win
+# 产物：desktop\release\H3C Agent-Setup-<版本>.exe（NSIS 安装向导）
+```
+
+打包脚本 `npm run dist:win` 分 4 步自动执行：
+
+| 步骤 | 命令 | 说明 |
+|------|------|------|
+| `build:frontend` | `cd ../frontend && npm run build` | Vue 生产构建 → `frontend/dist` |
+| `build:backend` | `node build-backend.js` | PyInstaller 冻结 → `backend/dist/h3c-agent-backend` |
+| `prepare:resources` | `node prepare-resources.mjs` | 拷贝产物到 `desktop/resources/` |
+| electron-builder | `electron-builder --win` | 打包 NSIS 安装程序 |
+
+打包完成后双击 `desktop\release\H3C Agent-Setup-<版本>.exe` 即可安装。
+
+> **NSIS 安装器特性**：支持自定义安装路径、桌面快捷方式、开始菜单快捷方式。未签名安装包首次运行可能会被 Windows Defender 拦截，点击「更多信息 → 仍要运行」即可。
+>
+> 完整打包说明（代码签名 / 公证 / 图标）见 [`desktop/BUILD.md`](desktop/BUILD.md)。
 
 ### 4.4 关键配置（`backend/.env`，均可选）
 
