@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <span class="page-title">自动化</span>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
+      <el-button type="primary" :icon="Plus" @click="openCreateChoice">新建任务</el-button>
     </div>
 
     <div v-loading="loading" class="task-grid">
@@ -18,7 +18,42 @@
             </div>
             <div class="task-agent">{{ row.agent_name || `#${row.agent_id}` }}</div>
           </div>
-          <el-switch :model-value="row.enabled" @change="onToggle(row)" />
+          <div class="task-right">
+            <el-switch :model-value="row.enabled" @change="onToggle(row)" />
+            <el-dropdown trigger="click" placement="bottom-end" :teleported="false" popper-class="task-action-popper">
+              <button class="task-menu" type="button" aria-label="更多操作">
+                <el-icon :size="16"><MoreFilled /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu class="task-dropdown-menu">
+                  <el-dropdown-item :disabled="runningId === row.id" @click="onRun(row)">
+                    <span class="dropdown-item-inner">
+                      <el-icon :size="15"><VideoPlay /></el-icon>
+                      <span>{{ runningId === row.id ? '运行中...' : '运行' }}</span>
+                    </span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="$router.push(`/tasks/${row.id}/runs`)">
+                    <span class="dropdown-item-inner">
+                      <el-icon :size="15"><Clock /></el-icon>
+                      <span>历史</span>
+                    </span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="openEdit(row)">
+                    <span class="dropdown-item-inner">
+                      <el-icon :size="15"><EditPen /></el-icon>
+                      <span>编辑</span>
+                    </span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="onDelete(row)">
+                    <span class="dropdown-item-inner danger">
+                      <el-icon :size="15"><Delete /></el-icon>
+                      <span>删除</span>
+                    </span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
         <p class="task-desc">{{ row.description || '暂无描述' }}</p>
         <div class="task-meta">
@@ -29,28 +64,39 @@
           </span>
           <span v-else>未执行</span>
         </div>
-        <div class="task-actions">
-          <button :disabled="runningId === row.id" @click="onRun(row)">
-            <el-icon :size="14"><VideoPlay /></el-icon>{{ runningId === row.id ? '运行中...' : '运行' }}
-          </button>
-          <button @click="$router.push(`/tasks/${row.id}/runs`)">
-            <el-icon :size="14"><Clock /></el-icon>历史
-          </button>
-          <button @click="openEdit(row)">
-            <el-icon :size="14"><EditPen /></el-icon>编辑
-          </button>
-          <button class="danger" @click="onDelete(row)">
-            <el-icon :size="14"><Delete /></el-icon>删除
-          </button>
-        </div>
       </article>
-      <button v-if="!loading && !rows.length" class="empty-task" @click="openCreate">
+      <button v-if="!loading && !rows.length" class="empty-task" @click="openCreateChoice">
         <span class="empty-icon">+</span>
         <span class="empty-title">还没有自动化任务</span>
         <span class="empty-desc">把重复提醒、定时查询或固定工作流交给专家按时执行。</span>
         <span class="empty-action">新建第一个任务</span>
       </button>
     </div>
+
+    <!-- New-task path chooser: 对话生成 vs 高级配置 -->
+    <el-dialog v-model="choiceVisible" title="新建任务" width="640px">
+      <div class="create-choices">
+        <button class="create-choice" @click="chooseCustom">
+          <div class="create-choice-icon">💬</div>
+          <div class="create-choice-body">
+            <div class="create-choice-title">对话创建（推荐）</div>
+            <div class="create-choice-desc">
+              用一句话描述你想自动化的事情、由哪个专家执行、多久跑一次，AI 会理解需求并自动创建任务。最简单、最快的方式。
+            </div>
+          </div>
+          <el-tag size="small" type="primary" effect="light">推荐</el-tag>
+        </button>
+        <button class="create-choice" @click="chooseAdvanced">
+          <div class="create-choice-icon">🛠️</div>
+          <div class="create-choice-body">
+            <div class="create-choice-title">高级配置（专业配置）</div>
+            <div class="create-choice-desc">
+              通过完整表单手动配置执行专家、提示词、调度（cron / 单次）、通知渠道、超时与并发等全部参数。适合需要精细控制的场景。
+            </div>
+          </div>
+        </button>
+      </div>
+    </el-dialog>
 
     <el-dialog v-model="visible" :title="editing ? '编辑任务' : '新建任务'" width="720px" :close-on-click-modal="false">
       <el-form :model="form" label-width="120px">
@@ -143,16 +189,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, VideoPlay, Clock, EditPen, Delete } from '@element-plus/icons-vue'
+import { Plus, VideoPlay, Clock, EditPen, Delete, MoreFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 
 const auth = useAuth()
+const router = useRouter()
 const rows = ref<any[]>([])
 const agents = ref<any[]>([])
 const loading = ref(false)
 const visible = ref(false)
+const choiceVisible = ref(false)
 const saving = ref(false)
 const editing = ref<any | null>(null)
 const runningId = ref<number | null>(null)
@@ -187,6 +236,25 @@ async function load() {
   } finally { loading.value = false }
 }
 onMounted(load)
+
+function openCreateChoice() {
+  choiceVisible.value = true
+}
+function chooseAdvanced() {
+  choiceVisible.value = false
+  openCreate()
+}
+// 对话创建：跳转到首页对话框，预置「自动化任务生成器」技能 + 一句话模板，
+// 用户补全描述后发送即可由 create_task skill 理解并创建任务。
+function chooseCustom() {
+  choiceVisible.value = false
+  const template =
+    '帮我创建一个自动化任务，任务是要[在这里描述要做什么]，调用[填写专家名称]专家智能体，执行时间是[多久执行一次，例如每天早上9点 / 每隔1小时]。'
+  router.push({
+    path: '/chat',
+    query: { skill: 'create_task', draft: template },
+  })
+}
 
 function openCreate() {
   editing.value = null
@@ -288,54 +356,124 @@ function relTime(iso: string | null | undefined) {
 
 .small { font-size: 13px; }
 
-.task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; min-height: 140px; }
+.task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; min-height: 140px; align-items: start; }
 .task-card {
-  min-height: 184px;
-  padding: 18px;
-  border: 1px solid #eeeeeb;
-  border-radius: 18px;
-  background: #fff;
+  min-height: 156px;
+  padding: 14px;
+  border: 1px solid #ebe9e2;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(252, 251, 247, .96), rgba(255, 255, 255, 1)),
+    #fff;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
 }
-.task-card:hover { box-shadow: 0 16px 36px -34px rgba(0,0,0,.35); }
-.task-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.task-card:hover { box-shadow: 0 18px 40px -34px rgba(34, 34, 30, .28); border-color: #ddd9cf; transform: translateY(-1px); }
+.task-head { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .task-icon {
-  width: 42px; height: 42px; border-radius: 12px;
-  background: #f1f1ef; color: #292926;
+  width: 40px; height: 40px; border-radius: 12px;
+  background: linear-gradient(135deg, #f5f1e8, #ece8de);
+  color: #56554e;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 .task-main { flex: 1; min-width: 0; }
-.task-name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 760; min-width: 0; }
+.task-name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 760; min-width: 0; line-height: 1.25; }
 .task-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-agent { margin-top: 3px; color: #8a8a84; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-agent { margin-top: 4px; color: #8a8a84; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.task-menu {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #777770;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.task-menu:hover {
+  background: #f6f6f3;
+  color: #2f2e28;
+  border-color: #e6e6e2;
+}
 .task-desc {
   margin: 0;
-  color: #777770;
+  color: #6f6d64;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: calc(1.6em * 2);
 }
 .task-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #777770; font-size: 12px; }
-.task-meta > span { padding: 4px 8px; border-radius: 999px; background: #f6f6f3; }
+.task-meta > span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f6f4ee;
+  color: #666257;
+  border: 1px solid #ede7db;
+}
 .last-run { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.task-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
-.task-actions button,
 .empty-task {
   border: 0; background: #f1f1ef; color: #30302d;
   border-radius: 999px; min-height: 30px; padding: 0 12px;
   cursor: pointer; font-size: 12px; font-weight: 650;
   display: inline-flex; align-items: center; gap: 5px;
 }
-.task-actions button:hover,
 .empty-task:hover { background: #e5e5e2; }
-.task-actions button:disabled { opacity: .55; cursor: wait; }
-.task-actions .danger { color: #b5392f; background: #f8ebe9; }
+.dropdown-item-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #2f2e28;
+}
+.dropdown-item-inner.danger { color: #9d3a31; }
+:deep(.task-action-popper.el-popper) {
+  border: 1px solid #e8e8e3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 34px -24px rgba(24, 24, 22, .38);
+  padding: 4px;
+}
+:deep(.task-action-popper.el-popper .el-popper__arrow) { display: none; }
+:deep(.task-action-popper .el-dropdown-menu) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:deep(.task-action-popper .el-dropdown-menu__item) {
+  min-width: 132px;
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin: 1px 0;
+  color: #2f2e28;
+  line-height: 1.2;
+  font-size: 13px;
+  transition: background .12s ease, color .12s ease;
+}
+:deep(.task-action-popper .el-dropdown-menu__item:hover) { background: #f6f6f3; }
+:deep(.task-action-popper .el-dropdown-menu__item.is-disabled) {
+  color: #a8a8a2;
+  cursor: wait;
+}
+:deep(.task-action-popper .el-dropdown-menu__item.is-divided) {
+  margin-top: 4px;
+  border-top-color: #eeeeeb;
+  padding-top: 9px;
+}
 .empty-task {
   min-height: 132px;
   width: min(380px, 100%);
@@ -406,5 +544,29 @@ function relTime(iso: string | null | undefined) {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .5; transform: scale(.8); }
 }
+@media (max-width: 1180px) { .task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .task-grid { grid-template-columns: 1fr; } }
+
+/* New-task path chooser (对话生成 vs 高级配置) — mirrors 专家管理 visual. */
+.create-choices { display: flex; flex-direction: column; gap: 12px; }
+.create-choice {
+  display: flex; align-items: center; gap: 14px;
+  text-align: left; width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #eeeeeb; border-radius: 16px;
+  background: #fff; cursor: pointer;
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.create-choice:hover {
+  border-color: #c9d6f5; background: #fafbff;
+  box-shadow: 0 14px 30px -28px rgba(0,0,0,.35);
+}
+.create-choice-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: #f2f2ef; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.create-choice-body { flex: 1; min-width: 0; }
+.create-choice-title { font-size: 15px; font-weight: 760; margin-bottom: 4px; }
+.create-choice-desc { font-size: 12.5px; color: #777770; line-height: 1.55; }
 </style>

@@ -6,8 +6,9 @@
         <span class="page-count">{{ filteredRows.length }}</span>
       </div>
       <div class="head-actions">
-        <el-button @click="openUpload"><el-icon><Upload /></el-icon>上传 Skill 包</el-button>
-        <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建 Skill</el-button>
+        <el-button type="primary" @click="openUpload"><el-icon><Upload /></el-icon>上传 Skill 包</el-button>
+        <el-button  @click="openCreate"><el-icon><Plus /></el-icon>新建 Skill</el-button>
+        <el-button @click="openMarket"><el-icon><Shop /></el-icon>从市场安装技能</el-button>
       </div>
     </div>
     <div class="plugin-toolbar">
@@ -22,6 +23,7 @@
             <div class="plugin-name">{{ row.name || '未命名 Skill' }}</div>
           </div>
           <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '停用' }}</el-tag>
+          <el-tag v-if="isBuiltin(row)" type="warning" size="small" effect="light" style="margin-left:6px">内置</el-tag>
         </div>
         <p class="plugin-desc">{{ row.description || row.user_summary || '暂无描述' }}</p>
         <div class="plugin-meta-row">
@@ -34,7 +36,7 @@
             <button v-if="row.source_json?.path" @click="openDetail(row)">详情</button>
             <button @click="openEdit(row)">编辑</button>
             <button @click="openSummary(row)">使用说明</button>
-            <button class="danger" @click="onDelete(row)">删除</button>
+            <button v-if="!isBuiltin(row)" class="danger" @click="onDelete(row)">删除</button>
           </div>
         </div>
       </article>
@@ -231,6 +233,120 @@
         <el-button type="primary" :loading="summarySaving" @click="onSaveSummary">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- SkillHub market drawer -->
+    <el-drawer v-model="marketVisible" :size="980" direction="rtl" title="从市场安装技能" class="market-drawer">
+      <div class="market-wrap">
+        <div class="market-toolbar">
+          <el-input
+            v-model="marketQuery"
+            clearable
+            placeholder="搜索 SkillHub 技能..."
+            @keyup.enter="onMarketSearch"
+            @clear="onMarketSearch"
+          >
+            <template #append>
+              <el-button @click="onMarketSearch"><el-icon><Search /></el-icon></el-button>
+            </template>
+          </el-input>
+          <el-radio-group v-model="marketSection" :disabled="!!marketQuery.trim()" @change="reloadMarket">
+            <el-radio-button v-for="s in SECTIONS" :key="s.key" :value="s.key">{{ s.label }}</el-radio-button>
+          </el-radio-group>
+        </div>
+
+        <div v-loading="marketLoading" class="market-grid">
+          <article
+            v-for="item in marketItems"
+            :key="item.slug"
+            class="market-card"
+            :class="{ active: marketDetail?.slug === item.slug }"
+            @click="openMarketDetail(item)"
+          >
+            <div class="market-card-top">
+              <img v-if="item.icon" :src="item.icon" class="market-icon" alt="" @error="onIconError" />
+              <div v-else class="market-icon market-icon-fallback">{{ fallbackInitial(item.name) }}</div>
+              <div class="market-card-main">
+                <div class="market-name">{{ item.name }}</div>
+                <div class="market-owner muted">{{ item.owner || item.source }}</div>
+              </div>
+              <el-tag v-if="item.installed" type="info" size="small">已安装</el-tag>
+            </div>
+            <p class="market-desc">{{ item.description || '暂无描述' }}</p>
+            <div class="market-meta">
+              <span class="market-stat"><el-icon><Download /></el-icon>{{ formatCount(item.downloads) }}</span>
+              <span class="market-stat"><el-icon><Star /></el-icon>{{ formatCount(item.stars) }}</span>
+              <span v-if="item.version" class="market-stat">v{{ item.version }}</span>
+              <el-button
+                size="small"
+                :type="item.installed ? 'default' : 'primary'"
+                :loading="installingSlug === item.slug"
+                @click.stop="onInstall(item)"
+              >{{ item.installed ? '重新安装' : '安装' }}</el-button>
+            </div>
+          </article>
+          <div v-if="!marketLoading && !marketItems.length" class="market-empty">
+            {{ marketQuery.trim() ? '没有找到匹配的技能' : '暂无数据' }}
+          </div>
+        </div>
+
+        <div v-if="marketItems.length" class="market-pager">
+          <el-button :disabled="marketPage <= 1 || marketLoading" @click="goPage(marketPage - 1)">上一页</el-button>
+          <span class="muted">第 {{ marketPage }} 页</span>
+          <el-button :disabled="!marketHasMore || marketLoading" @click="goPage(marketPage + 1)">下一页</el-button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- Market install confirm (detail + security reports + findings) -->
+    <el-dialog v-model="installVisible" :title="`安装 · ${installTarget?.name || ''}`" width="600px" destroy-on-close>
+      <div v-if="installTarget" class="install-body">
+        <p class="market-desc">{{ installTarget.description }}</p>
+        <div class="install-meta muted">
+          <span>{{ installTarget.owner || installTarget.source }}</span>
+          <span v-if="detailLoaded?.version">· v{{ detailLoaded.version }}</span>
+          <span>· 本地编码 {{ slugToCode(installTarget.slug) }}</span>
+        </div>
+
+        <div v-if="detailLoaded?.security_reports?.length" class="security-reports">
+          <div class="install-label">SkillHub 安全报告</div>
+          <a
+            v-for="r in detailLoaded.security_reports"
+            :key="r.vendor"
+            :href="r.report_url"
+            target="_blank"
+            rel="noopener"
+            class="security-item"
+          >
+            <el-tag :type="r.status === 'benign' ? 'success' : 'warning'" size="small">{{ r.vendor }}</el-tag>
+            <span>{{ r.status_text || r.status }}</span>
+          </a>
+        </div>
+
+        <el-alert v-if="installTarget.installed" type="warning" :closable="false" show-icon
+                  title="该技能已安装，继续将覆盖本地版本（旧目录会先备份）" style="margin-top:10px" />
+
+        <!-- local security scan findings (after a blocked install) -->
+        <div v-if="installFindings.length" class="install-findings">
+          <el-alert type="warning" :closable="false" show-icon title="本地安全扫描检测到潜在风险">
+            <div class="findings-list">
+              <div v-for="(f, i) in installFindings.slice(0, 8)" :key="i" class="finding">
+                <code class="finding-file">{{ f.file }}</code>
+                <span class="finding-rule">{{ f.rule }}</span>
+                <span class="finding-snippet">{{ f.snippet }}</span>
+              </div>
+              <div v-if="installFindings.length > 8" class="finding muted">…还有 {{ installFindings.length - 8 }} 项</div>
+            </div>
+          </el-alert>
+          <el-checkbox v-model="installForce" style="margin-top:8px">我已确认上述内容，强制安装</el-checkbox>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="installVisible = false">取消</el-button>
+        <el-button type="primary" :loading="installingSlug === installTarget?.slug" @click="confirmInstall">
+          {{ installTarget?.installed ? '覆盖安装' : '安装' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -293,6 +409,12 @@ function skillSource(row: any) {
   if (row.source_json?.callable) return 'callable'
   if (row.source_json?.yaml) return 'YAML'
   return 'manual'
+}
+
+// Built-in callable skills (e.g. 专家生成器/create_expert) are seeded by the
+// backend and must not be deleted from the UI.
+function isBuiltin(row: any) {
+  return row?.source_json?.builtin === true
 }
 
 function fallbackInitial(value: string) {
@@ -552,6 +674,129 @@ async function onUploadSubmit() {
     uploading.value = false
   }
 }
+
+// ---------- SkillHub market ----------
+const SECTIONS = [
+  { key: 'hot', label: '热门' },
+  { key: 'featured', label: '精选' },
+  { key: 'newest', label: '最新' },
+  { key: 'recommended', label: '推荐' },
+  { key: 'trending', label: '趋势' },
+]
+const marketVisible = ref(false)
+const marketLoading = ref(false)
+const marketQuery = ref('')
+const marketSection = ref('hot')
+const marketItems = ref<any[]>([])
+const marketPage = ref(1)
+const marketHasMore = ref(false)
+const marketDetail = ref<any>(null)
+
+const installVisible = ref(false)
+const installTarget = ref<any>(null)
+const detailLoaded = ref<any>(null)
+const installFindings = ref<any[]>([])
+const installForce = ref(false)
+const installingSlug = ref<string | null>(null)
+
+function slugToCode(slug: string) {
+  let code = String(slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '')
+  if (!/^[a-z]/.test(code)) code = `skill-${code}`
+  return code.slice(0, 64)
+}
+function formatCount(n: number) {
+  if (!n) return '0'
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}w`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(n)
+}
+function onIconError(e: Event) {
+  (e.target as HTMLImageElement).style.visibility = 'hidden'
+}
+
+function openMarket() {
+  marketVisible.value = true
+  marketQuery.value = ''
+  marketSection.value = 'hot'
+  marketPage.value = 1
+  marketDetail.value = null
+  reloadMarket()
+}
+async function reloadMarket() {
+  marketLoading.value = true
+  try {
+    const res = await api.marketSkills({
+      q: marketQuery.value.trim(),
+      section: marketSection.value,
+      page: marketPage.value,
+      page_size: 24,
+    })
+    marketItems.value = res.items || []
+    marketHasMore.value = !!res.has_more
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载市场失败')
+    marketItems.value = []
+  } finally {
+    marketLoading.value = false
+  }
+}
+function onMarketSearch() {
+  marketPage.value = 1
+  reloadMarket()
+}
+function goPage(p: number) {
+  if (p < 1) return
+  marketPage.value = p
+  reloadMarket()
+}
+async function openMarketDetail(item: any) {
+  marketDetail.value = item
+  openInstall(item)
+}
+function openInstall(item: any) {
+  installTarget.value = item
+  installFindings.value = []
+  installForce.value = false
+  detailLoaded.value = null
+  installVisible.value = true
+  // fetch detail (version + security reports) in the background
+  api.marketSkillDetail(item.slug).then((d) => { detailLoaded.value = d }).catch(() => {})
+}
+function onInstall(item: any) {
+  openInstall(item)
+}
+async function confirmInstall() {
+  const item = installTarget.value
+  if (!item) return
+  installingSlug.value = item.slug
+  try {
+    await api.installMarketSkill(item.slug, {
+      name: item.name,
+      description: item.description || '',
+      force: installForce.value,
+      overwrite: !!item.installed,
+    })
+    ElMessage.success('安装成功')
+    installVisible.value = false
+    // reflect installed state in the market list + refresh main library
+    item.installed = true
+    await load()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail && typeof detail === 'object' && Array.isArray(detail.findings)) {
+      installFindings.value = detail.findings
+      ElMessage.warning(detail.message || '检测到潜在风险，请确认后强制安装')
+    } else if (typeof detail === 'string') {
+      ElMessage.error(detail)
+    } else if (detail && typeof detail === 'object') {
+      ElMessage.error(detail.message || '安装失败')
+    } else {
+      ElMessage.error('安装失败')
+    }
+  } finally {
+    installingSlug.value = null
+  }
+}
 </script>
 
 <style scoped>
@@ -772,4 +1017,62 @@ async function onUploadSubmit() {
 .row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .row-actions :deep(.el-button) { padding: 4px 6px; }
 @media (max-width: 900px) { .plugin-grid { grid-template-columns: 1fr; } }
+
+/* ---- SkillHub market ---- */
+.market-wrap { display: flex; flex-direction: column; height: calc(100vh - 80px); }
+.market-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 14px; flex-wrap: wrap;
+}
+.market-toolbar .el-input { max-width: 360px; }
+.market-grid {
+  flex: 1; overflow: auto; min-height: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+  align-content: start; padding-right: 4px;
+}
+.market-card {
+  border: 1px solid #eeeeeb; border-radius: 16px; background: #fff;
+  padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+}
+.market-card:hover { border-color: #d8d8d4; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+.market-card.active { border-color: var(--m-primary, #4a6cf7); }
+.market-card-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.market-icon {
+  width: 38px; height: 38px; border-radius: 10px; object-fit: cover;
+  background: #f2f2ef; flex-shrink: 0;
+}
+.market-icon-fallback {
+  display: flex; align-items: center; justify-content: center;
+  color: #56554e; font-weight: 760; font-size: 16px;
+}
+.market-card-main { flex: 1; min-width: 0; }
+.market-name { font-size: 14px; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-owner { margin-top: 2px; }
+.market-desc {
+  margin: 0; color: #777770; font-size: 12px; line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.market-meta {
+  display: flex; align-items: center; gap: 12px; margin-top: auto;
+  font-size: 12px; color: #8a8a84;
+}
+.market-stat { display: inline-flex; align-items: center; gap: 3px; }
+.market-meta .el-button { margin-left: auto; }
+.market-empty {
+  grid-column: 1 / -1; text-align: center; color: var(--m-text-tertiary);
+  padding: 48px 0; font-size: 13px;
+}
+.market-pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding-top: 12px;
+}
+.install-body { font-size: 13px; }
+.install-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.install-label { font-size: 12px; font-weight: 700; color: #56554e; margin: 10px 0 6px; }
+.security-reports { display: flex; flex-direction: column; gap: 6px; }
+.security-item { display: flex; align-items: center; gap: 8px; color: var(--m-text-secondary); text-decoration: none; }
+.security-item:hover { text-decoration: underline; }
+.install-findings { margin-top: 12px; }
+@media (max-width: 900px) { .market-grid { grid-template-columns: 1fr; } }
 </style>

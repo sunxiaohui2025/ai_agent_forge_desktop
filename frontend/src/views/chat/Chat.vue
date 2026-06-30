@@ -335,17 +335,30 @@
                 <button class="mention-clear" @click="clearMention" title="取消指派"><el-icon :size="12"><Close /></el-icon></button>
               </span>
             </div>
-            <el-input
-              v-model="input"
-              type="textarea"
-              :rows="1"
-              autosize
-              resize="none"
-              :placeholder="chat.currentAgent ? '今天帮你做什么...（输入 @ 指派专家，输入 / 调用指令）' : '请联系管理员授权可用的专家'"
-              :disabled="sending || !chat.currentAgent"
-              @input="onInputChange"
-              @keydown="onComposerKeydown"
-            />
+            <!-- 生成器 chip: shown when a builder skill is active (create_expert →
+                 专家生成器, create_task → 自动化任务生成器). Dark background per
+                 design. Sits inline to the left of the input so the prefilled
+                 instruction follows on the same line instead of wrapping below. -->
+            <div class="composer-input-row" :class="{ 'has-builder': builderSkill }">
+              <span v-if="builderSkill" class="builder-chip">
+                <el-icon :size="13"><MagicStick /></el-icon>
+                {{ builderLabel }}
+                <button class="builder-clear" @click="clearBuilder" title="取消">
+                  <el-icon :size="12"><Close /></el-icon>
+                </button>
+              </span>
+              <el-input
+                v-model="input"
+                type="textarea"
+                :rows="1"
+                autosize
+                resize="none"
+                :placeholder="chat.currentAgent ? '今天帮你做什么...（输入 @ 指派专家，输入 / 调用指令）' : '请联系管理员授权可用的专家'"
+                :disabled="sending || !chat.currentAgent"
+                @input="onInputChange"
+                @keydown="onComposerKeydown"
+              />
+            </div>
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
                 <el-upload :show-file-list="false" :auto-upload="false" :on-change="onPick" multiple>
@@ -353,6 +366,23 @@
                     <el-icon :size="18"><Plus /></el-icon>
                   </button>
                 </el-upload>
+                <el-dropdown trigger="click" @command="onPickAgent">
+                  <button class="tool-chip agent-chip" :disabled="!chat.agents.length"
+                          :title="'切换专家'">
+                    <el-icon :size="14"><Avatar /></el-icon>
+                    {{ chat.currentAgent?.name || '选择专家' }}
+                  </button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item v-if="!chat.agents.length" command="__none__">
+                        暂无可用专家
+                      </el-dropdown-item>
+                      <el-dropdown-item v-for="a in chat.agents" :key="a.id" :command="a.id">
+                        {{ a.name }}<span v-if="a.id === chat.currentAgent?.id" class="dd-hint"> · 当前</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <el-dropdown trigger="click" @command="onPickModel">
                   <button class="tool-chip model-chip"><el-icon :size="14"><Cpu /></el-icon> {{ selectedModelLabel }}</button>
                   <template #dropdown>
@@ -658,6 +688,27 @@ function toggleSkill(sk: any) {
     selectedSkills.value = [...selectedSkills.value, sk]
   }
 }
+
+// Builder chips — surfaced as a dark chip in the composer when a 生成器 skill
+// was pre-selected via a 自定义配置 / 对话创建 entry. Lets the user see / cancel
+// the builder mode. Two builders share the same chip styling:
+//   create_expert → 专家生成器 (from 专家管理)
+//   create_task   → 自动化任务生成器 (from 自动化)
+const BUILDER_LABELS: Record<string, string> = {
+  create_expert: '专家生成器',
+  create_task: '自动化任务生成器',
+}
+const builderSkill = computed(() =>
+  selectedSkills.value.find((s: any) => BUILDER_LABELS[s.code]) || null
+)
+const builderLabel = computed(() =>
+  builderSkill.value ? BUILDER_LABELS[builderSkill.value.code] : ''
+)
+function clearBuilder() {
+  if (!builderSkill.value) return
+  const code = builderSkill.value.code
+  selectedSkills.value = selectedSkills.value.filter((s: any) => s.code !== code)
+}
 function goAddSkill() {
   skillsPopoverOpen.value = false
   router.push({ path: '/plugins', query: { tab: 'skills' } })
@@ -713,6 +764,13 @@ async function onPickModel(id: number | null | string) {
       if (c) c.model_id = id
     } catch {}
   }
+}
+// Switch the active expert from the composer. Mirrors clicking a "召唤" button:
+// selecting a different agent starts a fresh welcome screen for it.
+function onPickAgent(id: number | string) {
+  if (id === '__none__') return
+  const a = chat.agents.find((x: any) => x.id === id)
+  if (a && a.id !== chat.currentAgent?.id) chat.selectAgent(a)
 }
 async function onPickPermission(mode: string) {
   permissionMode.value = mode
@@ -1081,7 +1139,51 @@ onMounted(async () => {
   const msgQuery = route.query.msg
   const msgId = Array.isArray(msgQuery) ? Number(msgQuery[0]) : Number(msgQuery)
   if (msgId && !Number.isNaN(msgId)) await scrollToMessage(msgId)
+  // Deep-link: /chat?draft=...&skill=create_expert — prefill the composer and
+  // pre-select a built-in skill so the user can describe an expert and have the
+  // 专家生成器 skill create it on send (自定义配置入口 from 专家管理).
+  await applyDraftFromQuery()
 })
+
+// Prefill composer text + pre-select a skill from the route query, then strip
+// those params so a refresh / back-nav doesn't re-trigger them.
+async function applyDraftFromQuery() {
+  const draftQ = route.query.draft
+  const draft = Array.isArray(draftQ) ? draftQ[0] : draftQ
+  const skillQ = route.query.skill
+  const skillCode = Array.isArray(skillQ) ? skillQ[0] : skillQ
+  const agentQ = route.query.agent
+  const agentId = Array.isArray(agentQ) ? Number(agentQ[0]) : Number(agentQ)
+  if (!draft && !skillCode && !(agentId && !Number.isNaN(agentId))) return
+  // 召唤: switch the composer to the requested expert. The agent may have been
+  // created earlier in this same session (e.g. via 专家生成器), in which case the
+  // store's cached list is stale — refresh it once before giving up so freshly
+  // created experts can still be summoned.
+  if (agentId && !Number.isNaN(agentId)) {
+    let a = chat.agents.find((x: any) => x.id === agentId)
+    if (!a) {
+      await chat.reloadAgents().catch(() => {})
+      a = chat.agents.find((x: any) => x.id === agentId)
+    }
+    if (a && a.id !== chat.currentAgent?.id) chat.selectAgent(a)
+  }
+  if (draft) input.value = String(draft)
+  if (skillCode) {
+    try {
+      if (!allSkills.value.length) await loadAllSkills()
+      const sk = allSkills.value.find((s: any) => s.code === skillCode)
+      if (sk && !selectedSkillIds.value.has(sk.id)) {
+        selectedSkills.value = [...selectedSkills.value, sk]
+      }
+    } catch {}
+  }
+  // Clear the one-shot params without adding a history entry.
+  const q = { ...route.query }
+  delete q.draft
+  delete q.skill
+  delete q.agent
+  router.replace({ path: route.path, query: q })
+}
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
@@ -2690,6 +2792,26 @@ function permHeadText(req: any): string {
   border-radius: var(--m-radius-sm); color: inherit; opacity: .7;
 }
 .mention-clear:hover { opacity: 1; background: rgba(0,0,0,.06); }
+
+/* 专家生成器 chip — dark (black) background per design.
+   The chip sits inline to the left of the textarea so the prefilled
+   instruction text follows on the same line instead of wrapping below. */
+.composer-input-row { display: flex; align-items: flex-start; gap: 8px; }
+.composer-input-row.has-builder :deep(.el-textarea) { flex: 1; }
+.builder-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  margin-top: 5px; white-space: nowrap;
+  padding: 3px 6px 3px 10px; border-radius: var(--m-radius);
+  font-size: 12px; font-weight: 600;
+  background: #1f1f1f; color: #fff;
+  border: 1px solid #1f1f1f;
+}
+.builder-clear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: none; background: transparent; cursor: pointer;
+  border-radius: var(--m-radius-sm); color: #fff; opacity: .65;
+}
+.builder-clear:hover { opacity: 1; background: rgba(255,255,255,.18); }
 .cmd-ico { color: var(--m-text-secondary, #6b6b66); flex-shrink: 0; }
 .cmd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmd-kind { font-size: 11px; color: var(--m-text-tertiary, #9a9a93); flex-shrink: 0; }
@@ -2738,6 +2860,13 @@ function permHeadText(req: any): string {
   max-width: 230px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.agent-chip {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--m-text, #1c1c1a);
 }
 .dd-hint { color: var(--m-text-tertiary); font-size: 11px; }
 .tool-chip {

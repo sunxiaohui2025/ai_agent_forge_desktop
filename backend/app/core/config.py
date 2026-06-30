@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     UPLOADS_DIR: str = "../storage/uploads"
     MAX_UPLOAD_MB: int = 50
 
+    # ---- SkillHub market (install skills from Tencent SkillHub) ----
+    # The CLI is just a wrapper around this public HTTP API; we call it directly
+    # so install works identically in dev and packaged builds (no global CLI).
+    SKILLHUB_ENABLED: bool = True
+    SKILLHUB_API_BASE: str = "https://api.skillhub.cn/api/v1"
+    SKILLHUB_CACHE_TTL: int = 600          # seconds to cache list/search/detail
+    SKILLHUB_MAX_PACKAGE_MB: int = 50      # reject oversized downloads
+    SKILLHUB_TIMEOUT_SEC: int = 30
+
     CORS_ORIGINS: str = "http://localhost:5173"
 
     # First-run admin bootstrap; change immediately after first login.

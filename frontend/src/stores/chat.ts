@@ -143,6 +143,24 @@ export const useChat = defineStore('chat', {
       if (!this.currentAgent) this.currentAgent = def || as[0] || null
       this.loaded = true
     },
+    /** Refresh just the agents list (and default agent) without touching the
+     *  current conversation/messages. Used after a new expert is created in
+     *  this session so it shows up in the composer dropdown and can be
+     *  summoned. Returns the freshly loaded list. */
+    async reloadAgents() {
+      const [as, def] = await Promise.all([
+        api.myAgents().catch(() => this.agents),
+        api.myDefaultAgent().catch(() => this.defaultAgent),
+      ])
+      this.agents = as
+      this.defaultAgent = def
+      // keep currentAgent reference in sync with the refreshed objects
+      if (this.currentAgent) {
+        const cur = (as as any[]).find((x) => x.id === this.currentAgent.id)
+        if (cur) this.currentAgent = cur
+      }
+      return as
+    },
     selectAgent(a: any) {
       const switched = a?.id !== this.currentAgent?.id
       this.currentAgent = a

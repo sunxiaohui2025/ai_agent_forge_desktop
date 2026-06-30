@@ -36,10 +36,18 @@ hiddenimports += [
 # Bundle our own app package source explicitly.
 datas += [("app", "app")]
 
+# Bundle the built-in experts so a fresh install ships with them. Lands at the
+# PyInstaller root as builtin_agents.json and is consumed on first boot by
+# app.main._seed_builtin_agents (bindings resolved by stable code). Optional —
+# absent in the public repo build, which then ships only the bare default agent.
+import os as _os
+_agents_json = _os.path.join("builtin_agents.json")
+if _os.path.isfile(_agents_json):
+    datas += [(_agents_json, ".")]
+
 # Bundle the built-in Skill packages so a fresh install ships with them. They
 # land under _internal/skills/ and are copied to DATA_DIR/skills on first boot
 # (see app.main._seed_builtin_skills). Skip the dotfiles git/Finder leave behind.
-import os as _os
 _skills_src = _os.path.join("..", "storage", "skills")
 if _os.path.isdir(_skills_src):
     for _name in _os.listdir(_skills_src):

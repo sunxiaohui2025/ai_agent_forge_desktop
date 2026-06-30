@@ -91,6 +91,9 @@ async def delete_skill(sid: int, db: AsyncSession = Depends(get_db), actor: User
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
         raise HTTPException(404, "不存在")
+    # Built-in callable skills (seeded on startup) are protected from deletion.
+    if (s.source_json or {}).get("builtin") is True:
+        raise HTTPException(400, "内置技能不可删除")
     # remove uploaded directory if path under SKILLS_DIR
     skills_root = Path(settings.SKILLS_DIR).resolve()
     p = (s.source_json or {}).get("path")
@@ -140,13 +143,45 @@ async def upload_skill(
 ):
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(400, "请上传 zip 包")
-    if (await db.execute(select(Skill).where(Skill.code == code))).scalar_one_or_none():
+    data = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        data.extend(chunk)
+    return await _install_from_zip_bytes(
+        bytes(data), code=code, name=name, description=description, force=force,
+        db=db, actor=actor, background_tasks=background_tasks, origin="upload",
+    )
+
+
+async def _install_from_zip_bytes(
+    zip_bytes: bytes,
+    *,
+    code: str,
+    name: str,
+    description: str,
+    force: bool,
+    db: AsyncSession,
+    actor: User,
+    background_tasks: BackgroundTasks,
+    origin: str,
+    origin_meta: dict | None = None,
+    overwrite: bool = False,
+) -> Skill:
+    """Shared install pipeline for both manual upload and market install.
+
+    extract → locate SKILL.md → static security scan → land on disk → DB insert
+    → background summarize. ``origin`` is recorded in source_json so we can later
+    tell market-installed skills apart and check for updates.
+    """
+    existing = (await db.execute(select(Skill).where(Skill.code == code))).scalar_one_or_none()
+    if existing and not overwrite:
         raise HTTPException(400, "code 已存在")
 
     skills_root = Path(settings.SKILLS_DIR)
     skills_root.mkdir(parents=True, exist_ok=True)
     target_dir = skills_root / code
-    if target_dir.exists():
+    backup_dir = skills_root / f".__bak_{code}"
+
+    if target_dir.exists() and not overwrite:
         raise HTTPException(400, f"目录已存在: {target_dir}")
 
     tmp_dir = skills_root / f".__tmp_{code}"
@@ -154,17 +189,19 @@ async def upload_skill(
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir()
 
+    moved_backup = False
     try:
         # save zip
         zip_path = tmp_dir / "upload.zip"
-        with zip_path.open("wb") as f:
-            while chunk := await file.read(1024 * 1024):
-                f.write(chunk)
+        zip_path.write_bytes(zip_bytes)
         # extract
         extract_dir = tmp_dir / "extract"
         extract_dir.mkdir()
-        with zipfile.ZipFile(zip_path) as zf:
-            _safe_extract(zf, extract_dir)
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                _safe_extract(zf, extract_dir)
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "无效的 zip 包")
         # locate SKILL.md
         skill_root = _find_skill_root(extract_dir)
 
@@ -172,34 +209,65 @@ async def upload_skill(
         from ...services.skill_scan import scan_skill_dir
         findings = scan_skill_dir(skill_root)
         if findings and not force:
-            await audit(db, actor.id, "skill.upload_blocked", target_type="skill", target_id=code,
-                        detail={"findings": findings[:20]})
+            await audit(db, actor.id, "skill.install_blocked", target_type="skill", target_id=code,
+                        detail={"origin": origin, "findings": findings[:20]})
             await db.commit()
             raise HTTPException(400, {"message": "Skill 内容触发安全规则,被拒绝",
                                       "findings": findings,
                                       "hint": "确认无问题可在请求中加 force=true 强制通过"})
         if findings:
-            await audit(db, actor.id, "skill.upload_force", target_type="skill", target_id=code,
-                        detail={"findings": findings[:20]})
+            await audit(db, actor.id, "skill.install_force", target_type="skill", target_id=code,
+                        detail={"origin": origin, "findings": findings[:20]})
 
         # parse SKILL.md frontmatter for description (best-effort)
         skill_md = (skill_root / "SKILL.md").read_text(encoding="utf-8", errors="ignore")
         if not description:
             description = _extract_description(skill_md) or ""
-        # move to final location
+
+        # back up an existing dir before overwriting, so a failure is recoverable
+        if target_dir.exists():
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            shutil.move(str(target_dir), str(backup_dir))
+            moved_backup = True
+        # move new bundle into final location
         shutil.move(str(skill_root), str(target_dir))
+    except Exception:
+        # restore backup on any failure during the move
+        if moved_backup and not target_dir.exists() and backup_dir.exists():
+            shutil.move(str(backup_dir), str(target_dir))
+            moved_backup = False
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    s = Skill(
-        code=code, name=name, description=description, type="atomic",
-        source_json={"path": str(target_dir.resolve())},
-        enabled=True,
-    )
-    db.add(s); await db.flush()
-    await audit(db, actor.id, "skill.upload", target_type="skill", target_id=s.id,
-                detail={"code": code})
+    source_json: dict[str, Any] = {"path": str(target_dir.resolve()), "origin": origin}
+    if origin_meta:
+        source_json.update(origin_meta)
+
+    if existing:
+        existing.name = name
+        existing.description = description
+        existing.type = "atomic"
+        existing.source_json = source_json
+        existing.enabled = True
+        existing.version += 1
+        s = existing
+        action = "skill.reinstall"
+    else:
+        s = Skill(code=code, name=name, description=description, type="atomic",
+                  source_json=source_json, enabled=True)
+        db.add(s)
+        action = "skill.install"
+
+    await db.flush()
+    await audit(db, actor.id, action, target_type="skill", target_id=s.id,
+                detail={"code": code, "origin": origin})
     await db.commit(); await db.refresh(s)
+    # successful commit → drop the backup
+    if moved_backup:
+        shutil.rmtree(backup_dir, ignore_errors=True)
     background_tasks.add_task(summarize_skill, s.id)
     return s
 
@@ -432,3 +500,101 @@ async def resummarize_skill(sid: int, background_tasks: BackgroundTasks,
     await audit(db, actor.id, "skill.resummarize", target_type="skill", target_id=s.id)
     await db.commit()
     return {"ok": True, "queued": True}
+
+
+# ---------- SkillHub market ----------
+import re as _re
+from ...services import skill_market
+
+
+def _slug_to_code(slug: str) -> str:
+    """Map a market slug to a local code. SKILLS_DIR/<code> is a directory name
+    and the DB column allows a-z0-9_- starting with a letter, so we sanitize and
+    fall back to a `skill_` prefix when the slug starts with a digit/symbol."""
+    code = _re.sub(r"[^a-z0-9_-]", "-", (slug or "").lower()).strip("-")
+    if not code:
+        raise HTTPException(400, "无效的 slug")
+    if not _re.match(r"^[a-z]", code):
+        code = f"skill-{code}"
+    return code[:64]
+
+
+async def _market_installed_map(db: AsyncSession) -> dict[str, dict]:
+    """Index local skills by their origin_slug (and code) so the market list can
+    mark already-installed entries."""
+    rows = (await db.execute(select(Skill))).scalars().all()
+    out: dict[str, dict] = {}
+    for r in rows:
+        sj = r.source_json or {}
+        info = {"id": r.id, "code": r.code, "version": sj.get("origin_version")}
+        if sj.get("origin_slug"):
+            out[sj["origin_slug"]] = info
+        out.setdefault(r.code, info)
+    return out
+
+
+@router.get("/market")
+async def market_list(
+    q: str = "",
+    section: str = "hot",
+    page: int = 1,
+    page_size: int = 24,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_or_operator),
+):
+    page = max(1, page)
+    page_size = min(max(1, page_size), 60)
+    if q.strip():
+        result = await skill_market.search_skills(q.strip(), page, page_size)
+    else:
+        result = await skill_market.list_skills(section, page, page_size)
+    installed = await _market_installed_map(db)
+    for item in result["items"]:
+        hit = installed.get(item["slug"]) or installed.get(_slug_to_code(item["slug"]))
+        item["installed"] = bool(hit)
+        item["installed_id"] = hit["id"] if hit else None
+    return result
+
+
+@router.get("/market/{slug}")
+async def market_detail(slug: str, _=Depends(require_admin_or_operator)):
+    return await skill_market.detail(slug)
+
+
+class MarketInstallIn(_BM):
+    name: str | None = None
+    description: str | None = None
+    force: bool = False
+    overwrite: bool = False
+
+
+@router.post("/market/{slug}/install", response_model=SkillOut)
+async def market_install(
+    slug: str,
+    payload: MarketInstallIn,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
+):
+    code = _slug_to_code(slug)
+    zip_bytes = await skill_market.download_zip(slug)
+    # best-effort version tag for "check updates" later
+    version = ""
+    try:
+        version = (await skill_market.detail(slug)).get("version", "")
+    except HTTPException:
+        pass
+    return await _install_from_zip_bytes(
+        zip_bytes,
+        code=code,
+        name=payload.name or slug,
+        description=payload.description or "",
+        force=payload.force,
+        db=db,
+        actor=actor,
+        background_tasks=background_tasks,
+        origin="skillhub",
+        origin_meta={"origin_slug": slug, "origin_version": version},
+        overwrite=payload.overwrite,
+    )
+

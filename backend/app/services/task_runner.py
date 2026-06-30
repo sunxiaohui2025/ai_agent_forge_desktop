@@ -118,6 +118,15 @@ async def _reap_stale_run_for_task(db: AsyncSession, task: Task) -> bool:
     task.last_run_at = now
     await db.commit()
     logger.warning("Reaped stale running run %s for task %s", run.id, task.id)
+    # Notify the owner that the run was force-closed. Without this a task that
+    # hangs (e.g. a stalled model stream) is silently reaped and the user never
+    # learns the run failed — they just see a permanently blank conversation.
+    owner = (await db.execute(select(User).where(User.id == task.owner_user_id))).scalar_one_or_none()
+    if owner:
+        try:
+            await _notify_run(db, task, run, owner)
+        except Exception as e:  # noqa: BLE001 — notification failure must not break reaping
+            logger.warning("notify after reap failed for task %s: %s", task.id, e)
     return True
 
 

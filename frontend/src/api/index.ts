@@ -158,6 +158,14 @@ export const api = {
     http.put(`/api/admin/skills/${id}/file`, { path, content }).then((r) => r.data),
   resummarizeSkill: (id: number) => http.post(`/api/admin/skills/${id}/resummarize`).then((r) => r.data),
 
+  // SkillHub market
+  marketSkills: (params: { q?: string; section?: string; page?: number; page_size?: number }) =>
+    http.get('/api/admin/skills/market', { params }).then((r) => r.data),
+  marketSkillDetail: (slug: string) =>
+    http.get(`/api/admin/skills/market/${encodeURIComponent(slug)}`).then((r) => r.data),
+  installMarketSkill: (slug: string, body: { name?: string; description?: string; force?: boolean; overwrite?: boolean }) =>
+    http.post(`/api/admin/skills/market/${encodeURIComponent(slug)}/install`, body, { skipErrorToast: true } as any).then((r) => r.data),
+
   packs: () => http.get('/api/admin/packs').then((r) => r.data),
   createPack: (p: any) => http.post('/api/admin/packs', p).then((r) => r.data),
   updatePack: (id: number, p: any) => http.patch(`/api/admin/packs/${id}`, p).then((r) => r.data),

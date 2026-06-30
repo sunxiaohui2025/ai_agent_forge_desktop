@@ -1020,6 +1020,11 @@ class AgentRunner:
         trigger = args.get("input") if isinstance(args, dict) and "input" in args else args
         if not isinstance(trigger, dict):
             trigger = {"value": trigger}
+        # Tasks are strictly per-user, but a callable Skill only sees the
+        # model-supplied args. Inject the owner so 自动化任务生成器 can persist a
+        # Task owned by the current user (the model never sees this field).
+        if skill_code == "create_task":
+            trigger = {**trigger, "_owner_user_id": self._user_id}
         result = await self._run_skill_by_code(skill_code, trigger)
         result = await self._register_skill_files(result)
         return result
@@ -2246,7 +2251,15 @@ class AgentRunner:
             return
         base_url = model.base_url or self.PROVIDER_BASE_URL.get(model.provider.lower())
         base_url = self.normalize_base_url(base_url)
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        # Bound each HTTP call so a stalled connection (server accepted the
+        # request but never streams a token) fails fast instead of hanging until
+        # the SDK default (~10min). Without this a scheduled task whose model
+        # stream stalls stays "running" for the full runtime budget, blocking
+        # every subsequent cron fire under the `skip` concurrency policy and
+        # leaving the conversation blank. 300s read budget + short connect.
+        from httpx import Timeout as _HxTimeout
+        _timeout = _HxTimeout(connect=15.0, read=300.0, write=60.0, pool=15.0)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=_timeout, max_retries=1)
 
         system = self._system_prompt(user_text) or "You are a helpful assistant."
         prompt = user_text

@@ -14,6 +14,9 @@ backend/.pytest_cache/
 backend/build/
 backend/dist/
 backend/builtin_models.json
+# 内置专家快照（由 scripts/export_builtin.py 生成，可能含内部提示词）。
+# 打包时由 sidecar.spec 注入安装包，不入库。
+backend/builtin_agents.json
 
 frontend/node_modules/
 frontend/dist/

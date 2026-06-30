@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-head"><span class="page-title">专家管理</span>
-      <el-button type="primary" @click="openCreate">新建专家</el-button>
+      <el-button type="primary" @click="openCreateChoice">新建专家</el-button>
     </div>
     <div class="agent-grid">
       <article v-for="row in rows" :key="row.id" class="agent-card">
@@ -19,24 +19,73 @@
           </div>
           <div class="agent-right">
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '停用' }}</el-tag>
-           
+            <el-dropdown trigger="click" placement="bottom-end" :teleported="false" popper-class="agent-action-popper">
+              <button class="agent-menu" type="button" aria-label="更多操作">
+                <el-icon :size="16"><MoreFilled /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu class="agent-dropdown-menu">
+                  <el-dropdown-item @click="openCapabilities(row)">
+                    <span class="dropdown-item-inner">
+                      <el-icon :size="15"><View /></el-icon>
+                      <span>技能能力</span>
+                    </span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="openEdit(row)">
+                    <span class="dropdown-item-inner">
+                      <el-icon :size="15"><EditPen /></el-icon>
+                      <span>编辑</span>
+                    </span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="onDelete(row)">
+                    <span class="dropdown-item-inner danger">
+                      <el-icon :size="15"><Delete /></el-icon>
+                      <span>删除</span>
+                    </span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
         <p class="agent-desc">{{ row.description || '暂无描述' }}</p>
         <div class="agent-meta">
-          <span>模型 {{ row.default_model_id ? modelLabel(row.default_model_id) : '未配置' }}</span>
           <span>技能 {{ row.skill_ids?.length || 0 }}</span>
           <span>MCP {{ row.mcp_ids?.length || 0 }}</span>
-          <div class="agent-actions">
-              <button class="hover-only" @click="openCapabilities(row)"><el-icon :size="14"><InfoFilled /></el-icon> 技能能力</button>
-              <button class="hover-only" @click="openEdit(row)">编辑</button>
-              <button class="hover-only danger" @click="onDelete(row)">删除</button>
-            </div>
+          <span>连接应用 {{ row.cli_app_ids?.length || 0 }}</span>
         </div>
-         
+        <button class="summon-btn" type="button" @click.stop="summon(row)">
+          <el-icon :size="14"><MagicStick /></el-icon>
+          <span>召唤</span>
+        </button>
       </article>
-      <button v-if="!rows.length" class="empty-agent" @click="openCreate">新建第一个专家</button>
+      <button v-if="!rows.length" class="empty-agent" @click="openCreateChoice">新建第一个专家</button>
     </div>
+
+    <!-- New-expert path chooser: 自定义配置(对话生成) vs 高级配置(表单) -->
+    <el-dialog v-model="choiceVisible" title="新建专家" width="640px">
+      <div class="create-choices">
+        <button class="create-choice" @click="chooseCustom">
+          <div class="create-choice-icon">💬</div>
+          <div class="create-choice-body">
+            <div class="create-choice-title">自定义配置（对话生成）</div>
+            <div class="create-choice-desc">
+              用一句话描述你想要的专家，AI 会理解你的需求，自动生成专家设定、挑选合适的技能与连接应用，确认后即可创建。最简单、最快的方式。
+            </div>
+          </div>
+          <el-tag size="small" type="primary" effect="light">推荐</el-tag>
+        </button>
+        <button class="create-choice" @click="chooseAdvanced">
+          <div class="create-choice-icon">🛠️</div>
+          <div class="create-choice-body">
+            <div class="create-choice-title">高级配置（专业配置）</div>
+            <div class="create-choice-desc">
+              通过完整表单手动配置专家的图标、设定、模型、技能、连接器、文件规则等全部参数。适合需要精细控制的场景。
+            </div>
+          </div>
+        </button>
+      </div>
+    </el-dialog>
 
     <el-dialog v-model="visible" :title="editing ? '编辑专家' : '新建专家'" width="760px">
       <el-form :model="form" label-width="120px">
@@ -197,10 +246,13 @@
 </template>
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { InfoFilled } from '@element-plus/icons-vue'
+import { Delete, EditPen, MoreFilled, View, MagicStick } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
+
+const router = useRouter()
 
 // View an expert's skills / MCP / model via the shared capability drawer
 // (same component the chat header uses).
@@ -276,11 +328,6 @@ async function load() {
 }
 onMounted(load)
 
-function modelLabel(id: number) {
-  const m = models.value.find((x: any) => x.id === id)
-  return m ? (m.code || m.model_id || `#${id}`) : `#${id}`
-}
-
 function iconText(value: string) {
   const s = String(value || '').trim()
   return (Array.from(s)[0] || '专').toUpperCase()
@@ -316,6 +363,31 @@ function openCreate() {
   maxFilesPerSend.value = 5
   parseMode.value = 'auto'
   visible.value = true
+}
+
+// New-expert path chooser ----------------------------------------------------
+const choiceVisible = ref(false)
+function openCreateChoice() {
+  choiceVisible.value = true
+}
+function chooseAdvanced() {
+  choiceVisible.value = false
+  openCreate()
+}
+// 自定义配置：跳转到首页对话框，预置「专家生成器」技能 + 一句话模板，
+// 用户补全描述后发送即可由 create_expert skill 理解并创建专家。
+function chooseCustom() {
+  choiceVisible.value = false
+  const template =
+    '帮我创建一个 XXX 专家，擅长 XXXXX。我的经验是：[请补充你的行业背景、相关经验]，调用我的XX应用。'
+  router.push({
+    path: '/chat',
+    query: { skill: 'create_expert', draft: template },
+  })
+}
+// 召唤: jump to the home chat with this expert pre-selected as the active agent.
+function summon(row: any) {
+  router.push({ path: '/chat', query: { agent: row.id } })
 }
 function openEdit(row: any) {
   editing.value = row
@@ -355,25 +427,47 @@ async function onDelete(row: any) {
 .workdir-row { display: flex; gap: 8px; width: 100%; }
 .workdir-row .el-input { flex: 1; }
 
-.agent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.agent-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .agent-card {
-  min-height: 156px;
-  padding: 16px;
-  border: 1px solid #eeeeeb;
-  border-radius: 18px;
-  background: #fff;
+  position: relative;
+  min-height: 148px;
+  padding: 14px;
+  border: 1px solid #ebe9e2;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(252, 251, 247, 0.96), rgba(255, 255, 255, 1)),
+    #fff;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
 }
-.agent-card:hover { box-shadow: 0 16px 36px -34px rgba(0,0,0,.35); border-color: #e6e6e2; }
+.agent-card:hover { box-shadow: 0 18px 40px -34px rgba(34, 34, 30, .28); border-color: #ddd9cf; transform: translateY(-1px); }
+
+/* 召唤 button — hover-reveal, bottom-right, dark rounded pill */
+.summon-btn {
+  position: absolute;
+  right: 14px; bottom: 14px;
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 14px;
+  border: none; border-radius: 999px;
+  background: #1f1f1f; color: #fff;
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  opacity: 0; transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease, background .16s ease;
+  box-shadow: 0 8px 20px -10px rgba(0,0,0,.5);
+}
+.agent-card:hover .summon-btn { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.summon-btn:hover { background: #000; }
 .agent-head { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .agent-avatar {
-  width: 42px; height: 42px; border-radius: 12px;
-  background: #f2f2ef; color: #56554e;
+  width: 40px; height: 40px; border-radius: 12px;
+  background: linear-gradient(135deg, #f5f1e8, #ece8de);
+  color: #56554e;
   display: flex; align-items: center; justify-content: center;
   font-weight: 760;
-  font-size: 17px;
+  font-size: 16px;
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -383,60 +477,79 @@ async function onDelete(row: any) {
   object-fit: cover;
 }
 .agent-main { flex: 1; min-width: 0; }
-.agent-name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 760; min-width: 0; }
+.agent-name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 760; min-width: 0; line-height: 1.25; }
 .agent-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-code { margin-top: 3px; color: #8a8a84; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-code { margin-top: 4px; color: #8a8a84; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
+}
+.agent-menu {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #777770;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.agent-menu:hover {
+  background: #f6f6f3;
+  color: #2f2e28;
+  border-color: #e6e6e2;
 }
 .agent-desc {
   margin: 0;
-  color: #777770;
+  color: #6f6d64;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: calc(1.6em * 2);
 }
 .agent-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #777770; font-size: 12px; }
-.agent-meta span { padding: 4px 8px; border-radius: 999px; background: #f6f6f3; }
-.agent-actions {
-  display: flex;
-  flex-wrap:right;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+.agent-meta span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f6f4ee;
+  color: #666257;
+  border: 1px solid #ede7db;
 }
-.agent-actions button,
+.dropdown-item-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #2f2e28;
+}
+.dropdown-item-inner.danger {
+  color: #9d3a31;
+}
+.empty-agent,
+.agent-menu,
 .empty-agent {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  border: 0; background: #f1f1ef; color: #30302d;
-  border-radius: 999px; min-height: 30px; padding: 0 12px;
-  cursor: pointer; font-size: 12px; font-weight: 650;
+  cursor: pointer;
 }
-.agent-actions button:hover,
 .empty-agent:hover { background: #e5e5e2; }
-.agent-actions .always {
-  background: #f6f6f3;
-  color: #56554e;
+.empty-agent {
+  min-height: 168px;
+  width: 100%;
+  border: 0;
+  background: #f1f1ef;
+  color: #30302d;
+  border-radius: 18px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 650;
 }
-.agent-actions .hover-only {
-  opacity: 0;
-  transform: translateX(4px);
-  pointer-events: none;
-  transition: opacity .14s ease, transform .14s ease, background .14s ease;
-}
-.agent-card:hover .agent-actions .hover-only {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-.agent-actions .danger { color: #b5392f; background: #f8ebe9; }
-.empty-agent { min-height: 182px; border-radius: 18px; width: 100%; }
 
 .icon-uploader {
   width: 100%;
@@ -507,5 +620,62 @@ async function onDelete(row: any) {
 }
 .polish-btn:disabled { color: #80868b; cursor: progress; }
 .polish-wrap :deep(.el-textarea__inner) { padding-bottom: 36px; }
+:deep(.agent-action-popper.el-popper) {
+  border: 1px solid #e8e8e3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 34px -24px rgba(24, 24, 22, .38);
+  padding: 4px;
+}
+:deep(.agent-action-popper.el-popper .el-popper__arrow) {
+  display: none;
+}
+:deep(.agent-action-popper .el-dropdown-menu) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:deep(.agent-action-popper .el-dropdown-menu__item) {
+  min-width: 132px;
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin: 1px 0;
+  color: #2f2e28;
+  line-height: 1.2;
+  font-size: 13px;
+  transition: background .12s ease, color .12s ease;
+}
+:deep(.agent-action-popper .el-dropdown-menu__item:hover) {
+  background: #f6f6f3;
+}
+:deep(.agent-action-popper .el-dropdown-menu__item.is-divided) {
+  margin-top: 4px;
+  border-top-color: #eeeeeb;
+  padding-top: 9px;
+}
+@media (max-width: 1180px) { .agent-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .agent-grid { grid-template-columns: 1fr; } }
+
+/* New-expert path chooser */
+.create-choices { display: flex; flex-direction: column; gap: 12px; }
+.create-choice {
+  display: flex; align-items: center; gap: 14px;
+  text-align: left; width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #eeeeeb; border-radius: 16px;
+  background: #fff; cursor: pointer;
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.create-choice:hover {
+  border-color: #c9d6f5; background: #fafbff;
+  box-shadow: 0 14px 30px -28px rgba(0,0,0,.35);
+}
+.create-choice-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: #f2f2ef; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.create-choice-body { flex: 1; min-width: 0; }
+.create-choice-title { font-size: 15px; font-weight: 760; margin-bottom: 4px; }
+.create-choice-desc { font-size: 12.5px; color: #777770; line-height: 1.55; }
 </style>
