@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import threading
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -312,6 +313,254 @@ class _FeishuClient:
         self._thread = None
 
 
+# ====================== 企业微信智能机器人长连接（WebSocket）======================
+# 企业微信『智能机器人』支持长连接 API 模式：通过 wss 建立一条 WebSocket，用
+# BotID + Secret 订阅，之后服务端把用户消息以 JSON 命令推下来，开发者再用同一条
+# 连接主动回复（支持流式）。无需公网回调地址、无需消息加解密。协议参考：
+#   https://developer.work.weixin.qq.com/document/path/101463
+#
+# 设计上对齐飞书长连接：ws 客户端跑在自己的守护线程 + 事件循环里，重活
+# （跑专家、读写本地库）通过 run_coroutine_threadsafe 交回主事件循环执行，
+# 流式增量再跨回 ws 线程的循环用同一条连接发出去。
+
+WECOM_WS_URL = "wss://openws.work.weixin.qq.com"
+_WECOM_PING_INTERVAL = 30.0   # seconds — 文档建议每 30 秒发一次 ping 保活
+
+
+class _WeComBotClient:
+    """One WeCom AI-bot long-connection bound to a single ChannelConfig row.
+
+    Runs an asyncio websocket client in a dedicated daemon thread (its own loop).
+    Inbound `aibot_msg_callback` messages are handed to the FastAPI main loop to
+    run the AgentRunner safely (the async DB engine is bound to that loop); the
+    streamed reply is pushed back over the same socket via `aibot_respond_msg`.
+    """
+
+    def __init__(self, bot_id: str, secret: str, agent_id: int | None,
+                 main_loop: asyncio.AbstractEventLoop):
+        self.bot_id = bot_id
+        self.secret = secret
+        self.agent_id = agent_id
+        self._main_loop = main_loop
+        self._thread: threading.Thread | None = None
+        self._ws: Any = None
+        self._ws_loop: asyncio.AbstractEventLoop | None = None
+        self._stop = threading.Event()
+        self._subscribed = False
+
+    # ---- thread / connection lifecycle ----------------------------------
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._run, name=f"wecom-ws-{self.bot_id}",
+                                        daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        loop, ws = self._ws_loop, self._ws
+        if loop and ws is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(ws.close(), loop)
+            except Exception:
+                pass
+        self._thread = None
+
+    def _run(self) -> None:
+        loop = asyncio.new_event_loop()
+        self._ws_loop = loop
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._connect_loop())
+        except Exception as e:  # pragma: no cover
+            logger.warning("wecom ws loop stopped: %s", e)
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
+            self._ws_loop = None
+
+    async def _connect_loop(self) -> None:
+        try:
+            import websockets
+        except Exception:  # pragma: no cover
+            await self._set_status("error", "缺少 websockets 依赖，请安装后重试")
+            return
+        backoff = 1
+        while not self._stop.is_set():
+            self._subscribed = False
+            try:
+                async with websockets.connect(
+                    WECOM_WS_URL, ping_interval=None, max_size=None
+                ) as ws:
+                    self._ws = ws
+                    await self._subscribe(ws)
+                    hb = asyncio.create_task(self._heartbeat(ws))
+                    try:
+                        async for raw in ws:
+                            await self._on_raw(ws, raw)
+                    finally:
+                        hb.cancel()
+            except Exception as e:
+                if self._stop.is_set():
+                    break
+                logger.warning("wecom ws disconnected: %s; reconnect in %ss", e, backoff)
+                await self._set_status("connecting", f"连接断开，重连中…（{e}）")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+                continue
+            finally:
+                self._ws = None
+            # Clean exit of the read loop (e.g. server closed) → reconnect.
+            if not self._stop.is_set():
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+        await self._set_status("disconnected", None)
+
+    async def _subscribe(self, ws) -> None:
+        await ws.send(json.dumps({
+            "cmd": "aibot_subscribe",
+            "headers": {"req_id": uuid.uuid4().hex},
+            "body": {"bot_id": self.bot_id, "secret": self.secret},
+        }, ensure_ascii=False))
+
+    async def _heartbeat(self, ws) -> None:
+        try:
+            while True:
+                await asyncio.sleep(_WECOM_PING_INTERVAL)
+                await ws.send(json.dumps({
+                    "cmd": "ping", "headers": {"req_id": uuid.uuid4().hex},
+                }, ensure_ascii=False))
+        except asyncio.CancelledError:  # normal teardown
+            pass
+        except Exception as e:  # pragma: no cover
+            logger.debug("wecom heartbeat ended: %s", e)
+
+    # ---- inbound dispatch -----------------------------------------------
+    async def _on_raw(self, ws, raw) -> None:
+        try:
+            msg = json.loads(raw)
+        except Exception:
+            return
+        cmd = msg.get("cmd")
+        if cmd == "aibot_msg_callback":
+            await self._on_message(msg)
+        elif cmd == "aibot_event_callback":
+            await self._on_event(ws, msg)
+        elif cmd is None:
+            # Response to subscribe / ping / respond — only errcode matters.
+            errcode = msg.get("errcode")
+            if errcode in (None, 0):
+                if not self._subscribed:
+                    self._subscribed = True
+                    await self._set_status("connected", None)
+                    logger.info("wecom bridge connected (bot_id=%s)", self.bot_id)
+            else:
+                detail = msg.get("errmsg") or f"errcode={errcode}"
+                logger.warning("wecom ws command error: %s", detail)
+                if not self._subscribed:
+                    await self._set_status("error", f"订阅失败：{detail}")
+
+    async def _on_message(self, msg: dict) -> None:
+        body = msg.get("body") or {}
+        req_id = (msg.get("headers") or {}).get("req_id") or uuid.uuid4().hex
+        if body.get("msgtype") != "text":
+            await self._respond_stream(req_id, uuid.uuid4().hex,
+                                       "目前仅支持文本消息哦~", finish=True)
+            return
+        text = ((body.get("text") or {}).get("content") or "").strip()
+        if not text:
+            return
+        chattype = body.get("chattype") or "single"
+        chatid = body.get("chatid") or ""
+        userid = (body.get("from") or {}).get("userid") or ""
+        # Route per conversation: group → chatid, single → sender userid.
+        conv_key = chatid if (chattype == "group" and chatid) else userid
+        if not conv_key:
+            return
+        stream_id = uuid.uuid4().hex
+
+        async def on_delta(partial: str) -> None:
+            # Runs on the main loop; push the stream frame over the ws loop.
+            await self._respond_stream(req_id, stream_id, partial, finish=False)
+
+        # Run the agent turn on the main loop (async DB lives there), await here.
+        reply = await self._run_on_main(
+            _run_agent_turn("wecom", conv_key, text, userid, self.agent_id,
+                            on_delta=on_delta)
+        )
+        await self._respond_stream(req_id, stream_id, reply or "（无输出）", finish=True)
+
+    async def _on_event(self, ws, msg: dict) -> None:
+        body = msg.get("body") or {}
+        eventtype = (body.get("event") or {}).get("eventtype") or ""
+        req_id = (msg.get("headers") or {}).get("req_id") or uuid.uuid4().hex
+        if eventtype == "enter_chat":
+            # Lightweight welcome (must reply within 5s; keep it static/fast).
+            try:
+                await ws.send(json.dumps({
+                    "cmd": "aibot_respond_welcome_msg",
+                    "headers": {"req_id": req_id},
+                    "body": {"msgtype": "text",
+                             "text": {"content": "你好，我是你的智能体专家，有什么可以帮你的？"}},
+                }, ensure_ascii=False))
+            except Exception:  # pragma: no cover
+                pass
+        elif eventtype == "disconnected_event":
+            # The server kicked us because a newer connection subscribed. Stop
+            # reconnecting to avoid fighting over the single allowed connection.
+            logger.warning("wecom ws kicked by a newer connection; stopping reconnect")
+            self._stop.set()
+            await self._set_status("error", "该机器人已在别处建立长连接（同一时间仅允许一个连接）")
+            try:
+                await ws.close()
+            except Exception:
+                pass
+
+    # ---- outbound: stream a reply frame over the socket -----------------
+    async def _respond_stream(self, req_id: str, stream_id: str, content: str,
+                              *, finish: bool) -> None:
+        """Send/refresh a streaming reply. Cross-loop safe.
+
+        May be called from the main loop (via on_delta) or the ws loop; in both
+        cases the actual send is scheduled onto the ws loop that owns the socket.
+        """
+        loop = self._ws_loop
+        ws = self._ws
+        if loop is None or ws is None:
+            return
+        payload = json.dumps({
+            "cmd": "aibot_respond_msg",
+            "headers": {"req_id": req_id},
+            "body": {
+                "msgtype": "stream",
+                "stream": {"id": stream_id, "finish": finish, "content": content or " "},
+            },
+        }, ensure_ascii=False)
+
+        async def _send() -> None:
+            try:
+                await ws.send(payload)
+            except Exception as e:  # pragma: no cover
+                logger.debug("wecom respond send failed: %s", e)
+
+        running = asyncio.get_running_loop()
+        if running is loop:
+            await _send()
+        else:
+            fut = asyncio.run_coroutine_threadsafe(_send(), loop)
+            await asyncio.wrap_future(fut)
+
+    # ---- helpers --------------------------------------------------------
+    async def _run_on_main(self, coro):
+        """Await a coroutine on the FastAPI main loop from the ws loop."""
+        fut = asyncio.run_coroutine_threadsafe(coro, self._main_loop)
+        return await asyncio.wrap_future(fut)
+
+    async def _set_status(self, status: str, detail: str | None) -> None:
+        await self._run_on_main(
+            get_bridge_manager()._set_status("wecom", status, detail))
+
+
 # ---------- shared agent-turn runner (used by every channel) ----------
 async def _resolve_agent_id(db, explicit_agent_id: int | None) -> int | None:
     """Pick the expert that answers a bridged message.
@@ -458,7 +707,7 @@ class BridgeManager:
     """Owns one live client per enabled channel and supports hot reload."""
 
     def __init__(self) -> None:
-        self._clients: dict[str, _FeishuClient] = {}
+        self._clients: dict[str, Any] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
 
     async def start(self) -> None:
@@ -491,9 +740,8 @@ class BridgeManager:
         if old:
             old.stop()
 
-        # 企业微信走加密回调（webhook），无需常驻长连接客户端：只要应用启用且
-        # 配置完整，就把状态标成 connected（回调就绪）。真正的收发在
-        # api/bridge.py 的 /wecom/webhook 里处理。
+        # 企业微信走『智能机器人长连接』（WebSocket）：用 BotID + Secret 建一条常驻
+        # 连接接收/回复消息，无需公网回调地址、无需加解密。收发在 _WeComBotClient 里。
         if channel == "wecom":
             if not cfg or not cfg.enabled:
                 await self._set_status(channel, "disconnected", None)
@@ -505,23 +753,28 @@ class BridgeManager:
                     secrets = json.loads(decrypt_str(cfg.config_enc) or "{}")
                 except Exception:
                     secrets = {}
+            bot_id = public.get("bot_id", "")
+            secret = secrets.get("secret", "")
             missing = []
-            if not public.get("corp_id"):
-                missing.append("CorpID")
-            if not public.get("agent_id"):
-                missing.append("AgentId")
-            if not secrets.get("corp_secret"):
+            if not bot_id:
+                missing.append("BotID")
+            if not secret:
                 missing.append("Secret")
-            if not secrets.get("token"):
-                missing.append("Token")
-            if not secrets.get("aes_key"):
-                missing.append("EncodingAESKey")
             if missing:
                 await self._set_status(channel, "error", f"缺少: {', '.join(missing)}")
-            else:
-                await self._set_status(
-                    channel, "connected",
-                    "回调已就绪。请确认企业微信后台的接收消息 URL 指向本机回调地址且公网可达。")
+                return
+            try:
+                client = _WeComBotClient(bot_id, secret, cfg.agent_id, self._loop)  # type: ignore[arg-type]
+                # Mark connecting *before* starting so the async subscribe-ack
+                # that flips the row to "connected" can't be overwritten by a
+                # late "connecting" write.
+                await self._set_status(channel, "connecting", "正在建立企业微信长连接…")
+                client.start()
+                self._clients[channel] = client
+                logger.info("wecom bridge starting (bot_id=%s)", bot_id)
+            except Exception as e:
+                logger.exception("wecom bridge start failed: %s", e)
+                await self._set_status(channel, "error", str(e))
             return
 
         if channel != "feishu":

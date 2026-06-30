@@ -10,14 +10,12 @@ them back in plaintext — it returns a masked "***" sentinel so the UI can show
 "configured" without leaking the value.
 """
 from __future__ import annotations
-import asyncio
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..db.session import get_db, SessionLocal
+from ..db.session import get_db
 from ..db.models import ChannelConfig, ChannelBinding, User
 from ..deps import current_user
 from ..core.crypto import encrypt_str, decrypt_str
@@ -66,21 +64,17 @@ CHANNELS: dict[str, dict] = {
     },
     "wecom": {
         "name": "企业微信",
-        "desc": "通过企业微信自建应用接入，可在企业微信 App 里直接和你的专家对话。"
-                "在『企业微信管理后台 → 应用管理 → 自建应用』创建应用，记录企业 CorpID、"
-                "应用 AgentId 和 Secret；在该应用『接收消息』里启用 API 接收，把下方回调 URL、"
-                "Token、EncodingAESKey 填进后台并随机生成。回调地址需公网可达"
-                "（桌面环境可用内网穿透，如 cpolar / frp 暴露本机 47900 端口）。",
+        "desc": "通过企业微信『智能机器人』长连接（WebSocket）接入，无需公网地址、无需配置回调 URL、无需消息加解密。"
+                "在『企业微信管理后台 → 智能机器人』创建机器人，进入机器人配置页开启『API 模式』并选择『长连接』方式，"
+                "拿到 BotID 与长连接专用 Secret 填进下方即可。开启开关并保存后，直接在企业微信里给机器人发消息就能和你的专家对话。",
+        "mode": "ws",   # long-connection — no callback URL required
         "console_url": "https://work.weixin.qq.com/wework_admin/frame#apps",
-        "console_label": "前往企业微信管理后台创建自建应用",
+        "console_label": "前往企业微信管理后台创建智能机器人",
         "fields": [
-            {"key": "corp_id", "label": "企业 CorpID", "secret": False, "placeholder": "ww 开头的企业 ID"},
-            {"key": "agent_id", "label": "应用 AgentId", "secret": False, "placeholder": "自建应用 AgentId（数字）"},
-            {"key": "corp_secret", "label": "应用 Secret", "secret": True, "placeholder": "自建应用 Secret"},
-            {"key": "token", "label": "回调 Token", "secret": True, "placeholder": "接收消息里设置的 Token"},
-            {"key": "aes_key", "label": "EncodingAESKey", "secret": True, "placeholder": "43 位消息加解密密钥"},
+            {"key": "bot_id", "label": "BotID", "secret": False, "placeholder": "智能机器人 BotID"},
+            {"key": "secret", "label": "长连接 Secret", "secret": True, "placeholder": "长连接专用密钥（与回调模式的 Token/EncodingAESKey 不同）"},
         ],
-        "callback_path": "/api/bridge/wecom/webhook",
+        "callback_path": None,
     },
 }
 
@@ -224,14 +218,15 @@ async def test_channel(ch: str, user: User = Depends(current_user), db: AsyncSes
     if missing:
         return {"ok": False, "missing": missing, "message": f"缺少必填项: {', '.join(missing)}"}
     if meta.get("mode") == "ws":
+        ch_name = meta.get("name", "该渠道")
         if cfg.enabled and cfg.status == "connected":
             return {"ok": True, "callback_path": None,
-                    "message": "配置完整，且长连接已建立。直接在飞书里给机器人发消息即可对话。"}
+                    "message": f"配置完整，且长连接已建立。直接在{ch_name}里给机器人发消息即可对话。"}
         if cfg.enabled and cfg.status == "error":
             return {"ok": False,
-                    "message": f"连接失败：{cfg.status_detail or '请检查 App ID / App Secret'}"}
+                    "message": f"连接失败：{cfg.status_detail or '请检查凭证是否正确'}"}
         return {"ok": True, "callback_path": None,
-                "message": "配置完整。开启上方开关并保存后，直接在飞书里给机器人发消息即可对话，无需配置回调地址。"}
+                "message": f"配置完整。开启上方开关并保存后，直接在{ch_name}里给机器人发消息即可对话，无需配置回调地址。"}
     return {
         "ok": True,
         "message": "配置完整。请在渠道开发者后台将事件回调地址指向下方 URL。",
@@ -260,126 +255,3 @@ async def delete_binding(bid: int, user: User = Depends(current_user), db: Async
         await db.delete(b)
         await db.commit()
     return {"ok": True}
-
-
-# ====================== 企业微信（WeCom）回调 ======================
-# 企业微信自建应用通过『接收消息』把用户消息以加密 POST 推到这个回调；
-# GET 用于后台保存配置时的 URL 有效性验证（回显解密后的 echostr）。
-#
-# 回调要求 5 秒内返回，而跑一次专家可能很久 —— 所以我们：
-#   * 校验签名 + 解密拿到用户消息；
-#   * 立刻返回空 200（满足企业微信时效要求，避免重试 / 报错）；
-#   * 在后台异步跑 AgentRunner，再用主动发送接口把回答推回用户。
-
-def _wecom_crypto_and_client(cfg: ChannelConfig):
-    """从渠道配置构造 (WeComCrypto, WeComClient)。缺配置返回 (None, None)。"""
-    from ..services.wecom_crypto import WeComCrypto, WeComClient
-    public = cfg.config_json or {}
-    secrets = _decrypt_secrets(cfg)
-    corp_id = public.get("corp_id", "")
-    agent_id = public.get("agent_id", "")
-    token = secrets.get("token", "")
-    aes_key = secrets.get("aes_key", "")
-    corp_secret = secrets.get("corp_secret", "")
-    if not (corp_id and token and aes_key):
-        return None, None
-    try:
-        crypto = WeComCrypto(token=token, encoding_aes_key=aes_key, corp_id=corp_id)
-    except Exception as e:
-        logger.warning("WeCom 加解密初始化失败: %s", e)
-        return None, None
-    client = WeComClient(corp_id=corp_id, corp_secret=corp_secret, agent_id=agent_id) \
-        if corp_secret else None
-    return crypto, client
-
-
-async def _wecom_load_cfg() -> ChannelConfig | None:
-    async with SessionLocal() as db:
-        return (await db.execute(
-            select(ChannelConfig).where(ChannelConfig.channel == "wecom")
-        )).scalar_one_or_none()
-
-
-@router.get("/wecom/webhook")
-async def wecom_verify(msg_signature: str = "", timestamp: str = "",
-                       nonce: str = "", echostr: str = ""):
-    """企业微信回调 URL 验证：解密 echostr 并原样返回明文。"""
-    cfg = await _wecom_load_cfg()
-    if cfg is None:
-        raise HTTPException(400, "尚未配置企业微信")
-    crypto, _ = _wecom_crypto_and_client(cfg)
-    if crypto is None:
-        raise HTTPException(400, "企业微信配置不完整（需 CorpID / Token / EncodingAESKey）")
-    if not crypto.verify_signature(msg_signature, timestamp, nonce, echostr):
-        raise HTTPException(401, "签名校验失败")
-    try:
-        plain = crypto.decrypt(echostr)
-    except Exception as e:
-        raise HTTPException(400, f"echostr 解密失败: {e}")
-    return PlainTextResponse(plain)
-
-
-@router.post("/wecom/webhook")
-async def wecom_receive(request: Request, msg_signature: str = "",
-                        timestamp: str = "", nonce: str = ""):
-    """接收企业微信用户消息：校验+解密后异步跑专家，立刻 200 返回。"""
-    from ..services.wecom_crypto import parse_message_xml
-
-    cfg = await _wecom_load_cfg()
-    if cfg is None or not cfg.enabled:
-        # 未启用：直接 200，避免企业微信反复重试。
-        return PlainTextResponse("")
-    crypto, client = _wecom_crypto_and_client(cfg)
-    if crypto is None:
-        return PlainTextResponse("")
-
-    raw = (await request.body()).decode("utf-8", errors="ignore")
-    try:
-        # body 是 <xml><Encrypt>...</Encrypt>...</xml>
-        import xml.etree.ElementTree as ET
-        encrypt = (ET.fromstring(raw).findtext("Encrypt") or "").strip()
-    except Exception:
-        encrypt = ""
-    if not encrypt:
-        return PlainTextResponse("")
-    if not crypto.verify_signature(msg_signature, timestamp, nonce, encrypt):
-        logger.warning("WeCom 回调签名校验失败")
-        return PlainTextResponse("")
-    try:
-        plain = crypto.decrypt(encrypt)
-    except Exception as e:
-        logger.warning("WeCom 消息解密失败: %s", e)
-        return PlainTextResponse("")
-
-    msg = parse_message_xml(plain)
-    msg_type = msg.get("MsgType", "")
-    from_user = msg.get("FromUserName", "")
-    text = (msg.get("Content", "") or "").strip()
-
-    # 只处理文本；其它类型给个提示（若能发送）。
-    if msg_type != "text" or not text:
-        if client and from_user and msg_type != "event":
-            asyncio.create_task(client.send_text(from_user, "目前仅支持文本消息哦~"))
-        return PlainTextResponse("")
-    if client is None:
-        logger.warning("WeCom 收到消息但未配置应用 Secret，无法回复")
-        return PlainTextResponse("")
-
-    # 异步跑专家 + 主动回复，HTTP 立即返回。
-    asyncio.create_task(_wecom_handle(cfg.agent_id, client, from_user, text))
-    return PlainTextResponse("")
-
-
-async def _wecom_handle(agent_id: int | None, client, from_user: str, text: str) -> None:
-    """后台任务：跑一轮专家并把回答主动发回企业微信用户。"""
-    from ..services.bridge_manager import _run_agent_turn
-    try:
-        reply = await _run_agent_turn(
-            "wecom", from_user, text, from_user, agent_id)
-    except Exception as e:  # pragma: no cover
-        logger.exception("WeCom 处理失败: %s", e)
-        reply = f"⚠️ 处理失败：{type(e).__name__}"
-    try:
-        await client.send_text(from_user, reply or "（无输出）")
-    except Exception as e:  # pragma: no cover
-        logger.exception("WeCom 回复发送失败: %s", e)

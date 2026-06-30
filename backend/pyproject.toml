@@ -34,6 +34,8 @@ dependencies = [
     "beautifulsoup4>=4.12",
     # Feishu (Lark) long-connection bridge — WebSocket relay, no public URL needed.
     "lark-oapi>=1.6",
+    # 企业微信智能机器人长连接（WebSocket）桥接客户端。
+    "websockets>=12",
 ]
 
 [tool.setuptools.packages.find]

@@ -48,8 +48,8 @@
           <div v-if="cur.mode === 'ws'" class="callback-box ws-hint">
             <div class="callback-label">长连接模式（推荐）</div>
             <div class="ws-text">
-              本渠道走飞书长连接，<b>无需公网地址、无需配置回调 URL</b>。
-              只要填好 App ID / App Secret，开启开关并保存，就能直接在飞书里
+              本渠道走长连接（WebSocket），<b>无需公网地址、无需配置回调 URL、无需消息加解密</b>。
+              只要填好上方凭证，开启开关并保存，就能直接在 {{ cur.name }} 里
               给机器人发消息和你的专家对话。
             </div>
             <a v-if="cur.console_url" class="console-link" :href="cur.console_url" target="_blank" rel="noopener">
@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 
@@ -117,6 +117,29 @@ async function load() {
   if (!channels.value.find((c) => c.channel === active.value)) active.value = channels.value[0]?.channel
 }
 
+// Patch only the live status fields of a channel so we never clobber the
+// user's in-progress form edits (values / enabled / agent_id).
+function patchStatus(ch: string, fresh: any) {
+  const c = channels.value.find((x) => x.channel === ch)
+  if (!c || !fresh) return
+  c.status = fresh.status
+  c.status_detail = fresh.status_detail
+}
+
+// Some channels (e.g. 企业微信长连接) flip to "connected" asynchronously a
+// moment after save, once the WebSocket subscribe is acked. Poll the status a
+// few times so the UI reflects the real state without a manual page reload.
+async function pollUntilSettled(ch: string, tries = 8, interval = 1500) {
+  for (let i = 0; i < tries; i++) {
+    await new Promise((r) => setTimeout(r, interval))
+    try {
+      const fresh = await api.bridgeChannel(ch)
+      patchStatus(ch, fresh)
+      if (fresh.status !== 'connecting') return
+    } catch { /* keep trying */ }
+  }
+}
+
 async function onSave(ch: string) {
   saving.value = true
   try {
@@ -125,6 +148,7 @@ async function onSave(ch: string) {
     const idx = channels.value.findIndex((x) => x.channel === ch)
     channels.value[idx] = updated
     ElMessage.success('已保存')
+    if (updated.enabled && updated.status === 'connecting') pollUntilSettled(ch)
   } finally { saving.value = false }
 }
 
@@ -138,14 +162,30 @@ async function onTest(ch: string) {
     const updated = await api.saveBridgeChannel(ch, { enabled: c.enabled, agent_id: c.agent_id, values: c.values })
     const idx = channels.value.findIndex((x) => x.channel === ch)
     channels.value[idx] = updated
+    if (updated.enabled && updated.status === 'connecting') await pollUntilSettled(ch)
     testResult.value = await api.testBridgeChannel(ch)
   }
   finally { testing.value = false }
 }
 
+// Light periodic refresh while the page is open so live status (connect /
+// reconnect / error) stays current without clobbering form edits.
+let statusTimer: number | undefined
+async function refreshAllStatus() {
+  try {
+    const fresh = await api.bridgeChannels()
+    for (const f of fresh) patchStatus(f.channel, f)
+  } catch { /* ignore transient errors */ }
+}
+
 onMounted(async () => {
   agents.value = await api.agents().catch(() => [])
   await load()
+  statusTimer = window.setInterval(refreshAllStatus, 4000)
+})
+
+onUnmounted(() => {
+  if (statusTimer) window.clearInterval(statusTimer)
 })
 </script>
 

@@ -326,7 +326,13 @@
           </div>
 
           <div class="composer">
-            <HomePet v-if="isHome" class="composer-pet" />
+            <HomePet
+              v-if="isHome"
+              class="composer-pet"
+              :clickable="!!chat.currentAgent"
+              :title="chat.currentAgent ? '查看专家能力' : ''"
+              @activate="openCurrentAgentCapabilities"
+            />
             <!-- Active mention chip: this task will be dispatched to this expert -->
             <div v-if="mentionedExpert" class="mention-bar">
               <span class="mention-chip">
@@ -366,7 +372,7 @@
                     <el-icon :size="18"><Plus /></el-icon>
                   </button>
                 </el-upload>
-                <el-dropdown trigger="click" @command="onPickAgent" popper-class="agent-select-popper">
+                <el-dropdown v-if="!isDefaultAgentActive" trigger="click" @command="onPickAgent" popper-class="agent-select-popper">
                   <button class="tool-chip agent-chip" :disabled="!chat.agents.length"
                           :title="'切换专家'">
                     <img class="agent-chip-avatar" :src="agentAvatarSrc(chat.currentAgent)" alt="" />
@@ -1094,6 +1100,24 @@ const capDrawerAgentId = ref<number | null>(null)
 function openCapabilities(agentId: number) {
   capDrawerAgentId.value = agentId
   capDrawerVisible.value = true
+}
+
+// Hide the composer expert selector when the active expert is the default one.
+// Other entry points (e.g. 召唤专家) switch to a non-default expert, where the
+// selector stays visible so the user can switch back.
+const isDefaultAgentActive = computed(() => {
+  const cur = chat.currentAgent
+  if (!cur) return false
+  if (cur.is_default) return true
+  const def = chat.defaultAgent
+  return !!(def && def.id === cur.id)
+})
+
+// Clicking the floating home pet opens the same capability drawer used by the
+// 技能能力 action in 专家管理, scoped to the currently active expert.
+function openCurrentAgentCapabilities() {
+  const id = chat.currentAgent?.id
+  if (id != null) openCapabilities(id)
 }
 
 /** Split the current agent's description into a plain intro paragraph and a

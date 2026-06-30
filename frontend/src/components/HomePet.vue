@@ -1,5 +1,14 @@
 <template>
-  <div v-if="visible" class="home-pet" :class="[`pet-${activeKind}`, { 'is-preview': preview }]" aria-hidden="true">
+  <div
+    v-if="visible"
+    class="home-pet"
+    :class="[`pet-${activeKind}`, { 'is-preview': preview, 'is-clickable': clickable }]"
+    :aria-hidden="clickable ? undefined : 'true'"
+    :role="clickable ? 'button' : undefined"
+    :tabindex="clickable ? 0 : undefined"
+    @click="clickable && emit('activate')"
+    @keydown.enter.prevent="clickable && emit('activate')"
+  >
     <div class="pet-body">
       <span class="eye l" />
       <span class="eye r" />
@@ -12,7 +21,8 @@ import { usePet } from '@/stores/pet'
 import { computed } from 'vue'
 import type { PetKind } from '@/stores/pet'
 
-const props = defineProps<{ kind?: PetKind; preview?: boolean }>()
+const props = defineProps<{ kind?: PetKind; preview?: boolean; clickable?: boolean }>()
+const emit = defineEmits<{ (e: 'activate'): void }>()
 const pet = usePet()
 const activeKind = computed(() => props.kind || pet.kind)
 const visible = computed(() => props.preview || pet.enabled)
@@ -27,6 +37,12 @@ const visible = computed(() => props.preview || pet.enabled)
   pointer-events: none;
   animation: pet-peek 13.5s ease-in-out infinite;
 }
+.home-pet.is-clickable {
+  pointer-events: auto;
+  cursor: pointer;
+  outline: none;
+}
+.home-pet.is-clickable:hover { filter: brightness(1.06); }
 .home-pet.is-preview {
   animation: none !important;
   width: 86px;
