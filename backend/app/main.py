@@ -15,7 +15,7 @@ from .api import bridge as bridge_api
 from .api.admin import users as admin_users, models as admin_models, mcp as admin_mcp, \
     skills as admin_skills, agents as admin_agents, logs as admin_logs, \
     departments as admin_departments, packs as admin_packs, approvals as admin_approvals, \
-    cli_apps as admin_cli_apps, settings as admin_settings
+    cli_apps as admin_cli_apps, settings as admin_settings, health as admin_health
 from .services.file_cleanup import cleanup_loop
 from .services.task_runner import get_scheduler
 from .services.bridge_manager import get_bridge_manager
@@ -723,6 +723,7 @@ app.include_router(admin_packs.router)
 app.include_router(admin_approvals.router)
 app.include_router(admin_cli_apps.router)
 app.include_router(admin_settings.router)
+app.include_router(admin_health.router)
 
 
 @app.get("/api/health")

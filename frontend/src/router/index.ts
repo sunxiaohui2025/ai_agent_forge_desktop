@@ -28,6 +28,7 @@ const routes = [
       { path: 'skills', redirect: '/plugins' },
       { path: 'mcp', redirect: '/plugins' },
       { path: 'usage', component: () => import('@/views/settings/Usage.vue') },
+      { path: 'health', component: () => import('@/views/settings/HealthCheck.vue') },
       { path: 'logs', component: () => import('@/views/admin/Logs.vue') },
       { path: 'bridge', component: () => import('@/views/settings/Bridge.vue') },
       { path: 'about', component: () => import('@/views/settings/About.vue') },

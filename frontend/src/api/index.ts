@@ -118,6 +118,11 @@ export const api = {
   deleteModel: (id: number) => http.delete(`/api/admin/models/${id}`).then((r) => r.data),
   testModel: (id: number) => http.post(`/api/admin/models/${id}/test`).then((r) => r.data),
 
+  // health check (model connectivity + expert model binding)
+  healthCheck: () => http.get('/api/admin/health').then((r) => r.data),
+  fixAgentModels: (model_id?: number) =>
+    http.post('/api/admin/health/fix-agents', model_id != null ? { model_id } : {}).then((r) => r.data),
+
   mcps: () => http.get('/api/admin/mcp').then((r) => r.data),
   createMcp: (p: any) => http.post('/api/admin/mcp', p).then((r) => r.data),
   updateMcp: (id: number, p: any) => http.patch(`/api/admin/mcp/${id}`, p).then((r) => r.data),

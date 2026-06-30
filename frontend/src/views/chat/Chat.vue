@@ -366,19 +366,23 @@
                     <el-icon :size="18"><Plus /></el-icon>
                   </button>
                 </el-upload>
-                <el-dropdown trigger="click" @command="onPickAgent">
+                <el-dropdown trigger="click" @command="onPickAgent" popper-class="agent-select-popper">
                   <button class="tool-chip agent-chip" :disabled="!chat.agents.length"
                           :title="'切换专家'">
-                    <el-icon :size="14"><Avatar /></el-icon>
-                    {{ chat.currentAgent?.name || '选择专家' }}
+                    <img class="agent-chip-avatar" :src="agentAvatarSrc(chat.currentAgent)" alt="" />
+                    <span class="agent-chip-name">{{ chat.currentAgent?.name || '选择专家' }}</span>
                   </button>
                   <template #dropdown>
-                    <el-dropdown-menu>
+                    <el-dropdown-menu class="agent-select-menu">
                       <el-dropdown-item v-if="!chat.agents.length" command="__none__">
                         暂无可用专家
                       </el-dropdown-item>
                       <el-dropdown-item v-for="a in chat.agents" :key="a.id" :command="a.id">
-                        {{ a.name }}<span v-if="a.id === chat.currentAgent?.id" class="dd-hint"> · 当前</span>
+                        <span class="agent-select-option">
+                          <img class="agent-select-avatar" :src="agentAvatarSrc(a)" alt="" />
+                          <span class="agent-select-name">{{ a.name }}</span>
+                          <span v-if="a.id === chat.currentAgent?.id" class="dd-hint">当前</span>
+                        </span>
                       </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
@@ -529,6 +533,24 @@ import { parseMessageContent } from '@/lib/widget-parser'
 import { resolveToolMeta } from '@/lib/toolDisplay'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
+const DEFAULT_AGENT_AVATAR = `data:image/svg+xml,${encodeURIComponent(`
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <rect width="80" height="80" rx="22" fill="#C96442"/>
+  <g fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 30 40 20 58 30v20L40 60 22 50Z"/>
+    <path d="M22 30 40 40l18-10M22 50l18-10 18 10M40 20v20M40 40v20"/>
+    <circle cx="40" cy="40" r="7" fill="#C96442"/>
+  </g>
+</svg>
+`)}`
+
+function isImageIcon(icon: string | null | undefined) {
+  const s = String(icon || '').trim()
+  return /^data:image\//i.test(s) || /^https?:\/\//i.test(s) || s.startsWith('/')
+}
+function agentAvatarSrc(agent: any) {
+  return isImageIcon(agent?.icon) ? String(agent.icon).trim() : DEFAULT_AGENT_AVATAR
+}
 function escapeHtml(s: string): string {
   return md.utils.escapeHtml(s || '')
 }
@@ -852,6 +874,7 @@ const BUILTIN_COMMANDS = [
   { key: 'cmd:compact',  name: 'compact',         desc: '压缩对话上下文',            action: 'builtin', icon: IcoCompact },
   { key: 'cmd:doctor',   name: 'doctor',          desc: '诊断项目健康状况',          action: 'insert', icon: IcoDoctor, insert: '请诊断当前项目的健康状况（依赖、配置、潜在问题）：' },
   { key: 'cmd:memory',   name: 'memory',          desc: '编辑项目记忆文件',          action: 'insert', icon: IcoMemory, insert: '请打开并编辑项目记忆文件 CLAUDE.md：' },
+  { key: 'cmd:health',   name: 'health-check',    desc: '系统健康检查（模型 / 专家）', action: 'builtin', icon: IcoDoctor },
 ]
 const allCommandItems = computed(() => {
   const items: any[] = []
@@ -995,6 +1018,9 @@ function runBuiltinCommand(key: string) {
       break
     case 'cmd:cost':
       router.push('/settings/usage')
+      break
+    case 'cmd:health':
+      router.push('/settings/health')
       break
     case 'cmd:compact':
       input.value = '请用要点总结到目前为止的对话上下文，后续基于该摘要继续。'
@@ -2864,7 +2890,43 @@ function permHeadText(req: any): string {
 .agent-chip {
   max-width: 200px;
   overflow: hidden;
+  font-weight: 600;
+  color: var(--m-text, #1c1c1a);
+}
+.agent-chip-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.agent-chip-name {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-select-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 180px;
+  max-width: 260px;
+}
+.agent-select-avatar {
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24);
+}
+.agent-select-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--m-text, #1c1c1a);
 }
@@ -2923,6 +2985,7 @@ function permHeadText(req: any): string {
 .perm-opt { display: flex; flex-direction: column; line-height: 1.3; }
 .perm-opt span { font-size: 11px; color: var(--m-text-tertiary, #9a9a93); }
 :global(.apps-popover.el-popper),
+:global(.agent-select-popper.el-popper),
 :global(.perm-dropdown.el-popper) {
   border: 1px solid rgba(28,28,26,.08) !important;
   border-radius: 14px !important;
@@ -2932,6 +2995,7 @@ function permHeadText(req: any): string {
   overflow: hidden;
 }
 :global(.apps-popover .el-popover__title),
+:global(.agent-select-popper .el-popper__arrow),
 :global(.perm-dropdown .el-popper__arrow),
 :global(.apps-popover .el-popper__arrow) {
   display: none;
@@ -2955,6 +3019,24 @@ function permHeadText(req: any): string {
 :global(.perm-dropdown .el-dropdown-menu__item:not(.is-disabled):hover) {
   background: #eeeeeb !important;
   color: #1f1f1d !important;
+}
+:global(.agent-select-menu.el-dropdown-menu) {
+  padding: 6px !important;
+  min-width: 218px;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+:global(.agent-select-menu .el-dropdown-menu__item) {
+  height: auto !important;
+  min-height: 34px;
+  padding: 6px 10px !important;
+  border-radius: 10px !important;
+  line-height: 1.2 !important;
+}
+:global(.agent-select-menu .el-dropdown-menu__item:not(.is-disabled):focus),
+:global(.agent-select-menu .el-dropdown-menu__item:not(.is-disabled):hover) {
+  background: var(--m-surface-variant, #f0f0ed) !important;
+  color: var(--m-text, #1c1c1a) !important;
 }
 .composer:focus-within { box-shadow: 0 22px 58px -34px rgba(0,0,0,.4); }
 .composer :deep(.el-textarea__inner) {

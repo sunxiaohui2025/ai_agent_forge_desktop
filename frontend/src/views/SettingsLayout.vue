@@ -21,6 +21,9 @@
         </router-link>
 
         <div class="set-nav-group">系统</div>
+        <router-link to="/settings/health" class="set-nav-item" active-class="active">
+          <el-icon :size="15"><FirstAidKit /></el-icon><span>健康检查</span>
+        </router-link>
         <router-link to="/settings/usage" class="set-nav-item" active-class="active">
           <el-icon :size="15"><DataLine /></el-icon><span>用量统计</span>
         </router-link>
