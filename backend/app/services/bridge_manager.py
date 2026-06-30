@@ -327,6 +327,23 @@ WECOM_WS_URL = "wss://openws.work.weixin.qq.com"
 _WECOM_PING_INTERVAL = 30.0   # seconds — 文档建议每 30 秒发一次 ping 保活
 
 
+def _make_wss_ssl_context():
+    """Build an SSL context that trusts the certifi CA bundle.
+
+    In a packaged desktop build the bundled Python often can't reach the OS
+    trust store, so the default verification fails with
+    ``CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate``.
+    Pointing at certifi's bundled cacert.pem (shipped via httpx) fixes it
+    without disabling verification.
+    """
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # pragma: no cover - certifi should always be present
+        return ssl.create_default_context()
+
+
 class _WeComBotClient:
     """One WeCom AI-bot long-connection bound to a single ChannelConfig row.
 
@@ -386,11 +403,12 @@ class _WeComBotClient:
             await self._set_status("error", "缺少 websockets 依赖，请安装后重试")
             return
         backoff = 1
+        ssl_ctx = _make_wss_ssl_context()
         while not self._stop.is_set():
             self._subscribed = False
             try:
                 async with websockets.connect(
-                    WECOM_WS_URL, ping_interval=None, max_size=None
+                    WECOM_WS_URL, ssl=ssl_ctx, ping_interval=None, max_size=None
                 ) as ws:
                     self._ws = ws
                     await self._subscribe(ws)

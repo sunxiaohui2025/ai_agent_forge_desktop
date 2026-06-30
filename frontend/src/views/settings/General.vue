@@ -4,7 +4,7 @@
     <div class="set-rows">
       <div class="set-row">
         <div class="set-row-main">
-          <div class="set-row-title">数据目录</div>
+          <div class="set-row-title">数据目录(重要数据)</div>
           <div class="set-row-desc mono">{{ dataDir || '~/.h3c-agent' }}</div>
         </div>
         <el-button v-if="isDesktop" size="small" @click="openData">打开</el-button>

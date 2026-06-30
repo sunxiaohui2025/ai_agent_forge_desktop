@@ -36,6 +36,8 @@ dependencies = [
     "lark-oapi>=1.6",
     # 企业微信智能机器人长连接（WebSocket）桥接客户端。
     "websockets>=12",
+    # CA 根证书包：打包后的内置 Python 拿不到系统证书库，wss 连接需用它校验。
+    "certifi>=2024.2",
 ]
 
 [tool.setuptools.packages.find]
