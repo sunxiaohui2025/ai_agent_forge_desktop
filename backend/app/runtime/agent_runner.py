@@ -357,10 +357,14 @@ class AgentRunner:
         self._saved_ui: list[dict[str, Any]] = []
         # Buffer of assistant text used by the stream-tail fallback extractor
         self._fallback_text_buf: list[str] = []
-        # Per-turn safe workspaces for run_skill_script. Reused across multiple
-        # tool calls in the same response so an agent can create sources in one
-        # call and merge them in a later call without touching the real skill dir.
-        self._skill_workspaces: dict[str, str] = {}
+        # Single shared session workspace (lazily created). Lives UNDER
+        # storage/outputs/<user>/ so every artifact is both (a) reachable as a
+        # plain file by later skill scripts and (b) directly download-registrable
+        # without copying. `save_output_file` and `run_skill_script` both write
+        # here, so a file produced in one tool call (e.g. sources/slide-01.html)
+        # is visible to a script in a later call (e.g. merge_deck.py) within the
+        # same conversation — no need to re-pass content via the `files` param.
+        self._session_workspace: str | None = None
         # Set to True the moment the model calls `load_widget_guidelines` —
         # signals "I'm rendering via widget pipeline this turn", so any later
         # save_output_file with widget-shaped content is rejected to avoid
@@ -564,15 +568,20 @@ class AgentRunner:
                     "适用于 PPT(.html)、文档(.md/.docx)、PDF、代码、报告等任何需要交付给用户的产物。"
                     "调用本工具后,前端会显示一张文件卡片,用户可下载或在右侧分屏预览。"
                     "禁止把大段 HTML/Markdown/代码直接打字给用户 —— 一律改为调用本工具保存。"
-                    "但如果已加载 Skill 明确要求通过 run_skill_script 生成最终产物,不要用本工具保存中间文件,"
-                    "也不要为调用本工具而手动拼接最终文件。"
+                    "文件会写入本会话的共享工作区,后续 run_skill_script 可直接按相同相对路径读取本工具产生的文件。"
+                    "因此制作多文件产物(如 PPT 的 sources/slide-01.html 等分页)时,可先用本工具逐个保存,"
+                    "再调用对应 Skill 的合并/生成脚本读取它们,无需把内容重复塞进 run_skill_script 的 files 参数。"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "filename": {
                             "type": "string",
-                            "description": "文件名,带扩展名。如 'agent-intro.html'、'report.md'、'output.pdf'",
+                            "description": (
+                                "文件名,带扩展名,可包含子目录(相对路径)。"
+                                "如 'agent-intro.html'、'report.md'、'sources/slide-01.html'。"
+                                "不能以 / 开头,不能包含 .. 。同名再次保存视为覆盖(重新生成)。"
+                            ),
                         },
                         "content": {
                             "type": "string",
@@ -605,9 +614,10 @@ class AgentRunner:
                         "脚本可导出 generate(**kwargs) 或 run(**kwargs)。"
                         "平台会注入可选的 output/output_path 供产物型脚本写文件；"
                         "也支持只返回结构化 JSON 的校验/计算型脚本。"
-                        "当 Skill 文档要求由脚本生成最终产物时,必须优先调用本工具。"
-                        "如果中间文件无法被脚本读取,应改用 Skill 提供的 payload/一次性生成脚本,"
-                        "不要因为不能用 Bash 或路径失败就手动拼接文件。"
+                        "脚本运行在本会话的共享工作区(workspace/workdir/cwd 均已注入其绝对路径),"
+                        "因此可以直接读取本会话中 save_output_file 或先前 run_skill_script 产生的文件——"
+                        "用相同的相对路径(如 sources/slide-01.html)即可,无需重复通过 files 传内容。"
+                        "当 Skill 文档要求由脚本生成最终产物时,必须优先调用本工具,不要手动拼接最终文件。"
                     ),
                     "parameters": {
                         "type": "object",
@@ -620,14 +630,15 @@ class AgentRunner:
                             "files": {
                                 "type": "array",
                                 "description": (
-                                    "可选。运行脚本前写入本次安全工作区的输入文件列表。"
-                                    "用于需要 sources/、临时配置、CSV、HTML 分页等中间文件的 Skill。"
+                                    "可选。运行脚本前临时写入共享工作区的输入文件列表。"
+                                    "仅在内容尚未通过 save_output_file 落盘时才需要;若文件已在本会话保存过,"
+                                    "直接用相对路径引用即可,不必重复传。"
                                     "path 必须是相对路径,不能以 / 开头,不能包含 ..。"
                                 ),
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "path": {"type": "string", "description": "工作区内相对路径,如 ai-tech-deck/sources/slide-01.html"},
+                                        "path": {"type": "string", "description": "工作区内相对路径,如 sources/slide-01.html"},
                                         "content": {"type": "string", "description": "文件内容。文本默认 utf-8,二进制可 base64"},
                                         "encoding": {"type": "string", "description": "utf-8 或 base64,默认 utf-8"},
                                     },
@@ -636,10 +647,10 @@ class AgentRunner:
                             },
                             "workdir": {
                                 "type": "string",
-                                "description": "可选。脚本输入工作目录的相对路径,如 ai-tech-deck。会映射到安全工作区内的绝对路径。",
+                                "description": "可选。脚本输入工作目录的相对路径,如 ai-tech-deck。会映射到共享工作区内的绝对路径。",
                             },
                             "output_filename": {"type": "string",
-                                        "description": "可选。产物型脚本希望最终交付给用户的文件名,如 'slides.html'。会自动落到隔离目录"},
+                                        "description": "可选。产物型脚本希望最终交付给用户的文件名,如 'slides.html'。"},
                         },
                         "required": ["skill", "script", "kwargs"],
                     },
@@ -1336,6 +1347,57 @@ class AgentRunner:
         return {"__ui__": ui, "__halt__": True, "ok": True,
                 "note": "已展示表单，等待用户提交后再继续；本轮到此为止。"}
 
+    def _get_session_workspace(self):
+        """Return (and lazily create) the single shared session workspace.
+
+        Path: storage/outputs/<user_id>/_session/<conversation_id or runner uuid>/
+        Living under outputs/ means files here are directly download-registrable
+        (see services.downloads._allowed_roots) AND visible to skill scripts as
+        plain files, so multi-step skills can chain artifacts across tool calls.
+        """
+        from pathlib import Path as _Path
+        import uuid as _uuid
+        from ..core.config import settings
+        if self._session_workspace:
+            ws = _Path(self._session_workspace)
+            ws.mkdir(parents=True, exist_ok=True)
+            return ws
+        conv = getattr(self, "_conversation_id", None)
+        # Stable per-conversation key when available so files persist across
+        # turns; fall back to a per-runner uuid for ad-hoc/no-conversation runs.
+        key = str(conv) if conv is not None else _uuid.uuid4().hex[:12]
+        ws = (
+            _Path(settings.STORAGE_ROOT)
+            / "outputs"
+            / str(self._user_id or "anon")
+            / "_session"
+            / key
+        ).resolve()
+        ws.mkdir(parents=True, exist_ok=True)
+        self._session_workspace = str(ws)
+        return ws
+
+    def _safe_session_path(self, rel: str, *, allow_missing: bool = True):
+        """Resolve a workspace-relative path, rejecting absolute paths and `..`
+        traversal. Returns an absolute Path guaranteed to live inside the
+        session workspace."""
+        from pathlib import Path as _Path
+        ws = self._get_session_workspace()
+        rel_text = str(rel or "").strip()
+        if not rel_text:
+            raise ValueError("workspace path is empty")
+        rel_path = _Path(rel_text)
+        if rel_path.is_absolute() or any(part == ".." for part in rel_path.parts):
+            raise ValueError(f"unsafe workspace path: {rel_text}")
+        resolved = (ws / rel_path).resolve()
+        try:
+            resolved.relative_to(ws)
+        except ValueError as exc:
+            raise ValueError(f"workspace path escape rejected: {rel_text}") from exc
+        if not allow_missing and not resolved.exists():
+            raise FileNotFoundError(f"workspace path does not exist: {rel_text}")
+        return resolved
+
     async def _save_output_file(
         self, filename: str, content: str, mime: str | None = None,
         encoding: str = "utf-8",
@@ -1411,10 +1473,23 @@ class AgentRunner:
         if not filename or not content:
             return {"error": "filename and content are required"}
 
-        # Sanitize filename
-        safe = _re.sub(r"[^\w\.\-]+", "_", filename).strip("._-") or "output"
-        if len(safe) > 120:
-            safe = safe[-120:]
+        # Sanitize into a SAFE RELATIVE PATH. We preserve directory structure
+        # (e.g. "sources/slide-01.html") so a later skill script can consume the
+        # file by name from the shared session workspace. Each path segment is
+        # cleaned individually; absolute paths and `..` traversal are stripped.
+        raw_parts = [p for p in str(filename or "").replace("\\", "/").split("/") if p not in ("", ".", "..")]
+        clean_parts = []
+        for part in raw_parts:
+            cleaned = _re.sub(r"[^\w\.\-]+", "_", part).strip("._-")
+            if cleaned:
+                clean_parts.append(cleaned)
+        if not clean_parts:
+            clean_parts = ["output"]
+        # Cap the final segment length only (keep dir names intact).
+        if len(clean_parts[-1]) > 120:
+            clean_parts[-1] = clean_parts[-1][-120:]
+        rel_name = "/".join(clean_parts)
+        safe = clean_parts[-1]
         ext = _Path(safe).suffix.lower()
         if not mime:
             mime = _mt.guess_type(safe)[0] or "application/octet-stream"
@@ -1480,9 +1555,15 @@ class AgentRunner:
                         "bare_slide_numbers": bare_slides[:20],
                     }
 
-        outputs_root = _Path(settings.STORAGE_ROOT) / "outputs" / str(self._user_id or "anon")
-        outputs_root.mkdir(parents=True, exist_ok=True)
-        target = outputs_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
+        # Write into the SHARED session workspace (under outputs/, so it's both
+        # download-registrable and visible to later skill scripts). We write to
+        # the model-supplied relative path verbatim so scripts can find it by
+        # name. Re-saving the same name overwrites (treated as regeneration).
+        try:
+            target = self._safe_session_path(rel_name)
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"invalid output path: {e}"}
+        target.parent.mkdir(parents=True, exist_ok=True)
 
         # Decode content
         try:
@@ -1608,14 +1689,17 @@ class AgentRunner:
         if not script_path.exists() or script_path.suffix.lower() != ".py":
             return {"error": f"script not found or not .py: {script}"}
 
-        # Prepare optional output target (force into outputs/<user_id>/). Even
-        # validation-only scripts receive this path, but they are not required to use it.
+        # The shared session workspace is the single source of truth. Output
+        # files land here too (under outputs/), so they're both download-
+        # registrable AND visible to later skill scripts in the same run.
+        workspace_root = self._get_session_workspace()
+
+        # Prepare the output target inside the workspace. Even validation-only
+        # scripts receive this path, but they are not required to use it.
         safe = _re.sub(r"[^\w\.\-]+", "_", output_filename or "output.bin").strip("._-") or "output.bin"
         if len(safe) > 120:
             safe = safe[-120:]
-        outputs_root = _Path(settings.STORAGE_ROOT) / "outputs" / str(self._user_id or "anon")
-        outputs_root.mkdir(parents=True, exist_ok=True)
-        target_path = outputs_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
+        target_path = workspace_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
 
         # Normalize kwargs early so misplaced files/workdir can still create a
         # workspace. Models often put these fields inside kwargs despite the
@@ -1638,6 +1722,9 @@ class AgentRunner:
             if nested_workdir is not None:
                 workdir = str(nested_workdir)
 
+        # Path-like kwargs whose workspace-relative values get rewritten to
+        # absolute paths so scripts (e.g. merge_deck.py) can consume them
+        # without depending on process-wide chdir.
         path_like_keys = {
             "deck",
             "deck_folder",
@@ -1652,52 +1739,9 @@ class AgentRunner:
             "target_file",
             "target_path",
         }
-        workspace_key = f"{skill}:{script_path.parent}"
-        has_relative_workspace_ref = any(
-            key in call_kwargs
-            and isinstance(call_kwargs.get(key), str)
-            and str(call_kwargs.get(key)).strip()
-            and "://" not in str(call_kwargs.get(key))
-            and not _Path(str(call_kwargs.get(key))).is_absolute()
-            for key in path_like_keys
-        )
-
-        # Per-run input workspace. This lets complex skills prepare temporary
-        # source files without writing into the real skill directory or using
-        # save_output_file for intermediate artifacts.
-        workspace_root: _Path | None = None
-        if files or workdir or (has_relative_workspace_ref and workspace_key in self._skill_workspaces):
-            existing_workspace = self._skill_workspaces.get(workspace_key)
-            if existing_workspace:
-                workspace_root = _Path(existing_workspace).resolve()
-            else:
-                workspace_root = (
-                    _Path(settings.STORAGE_ROOT)
-                    / "runs"
-                    / str(self._user_id or "anon")
-                    / _uuid.uuid4().hex[:12]
-                    / "work"
-                ).resolve()
-                self._skill_workspaces[workspace_key] = str(workspace_root)
-            workspace_root.mkdir(parents=True, exist_ok=True)
 
         def _safe_workspace_path(rel: str, *, allow_missing: bool = True) -> _Path:
-            if workspace_root is None:
-                raise ValueError("workspace is not initialized")
-            rel_text = str(rel or "").strip()
-            if not rel_text:
-                raise ValueError("workspace path is empty")
-            rel_path = _Path(rel_text)
-            if rel_path.is_absolute() or any(part == ".." for part in rel_path.parts):
-                raise ValueError(f"unsafe workspace path: {rel_text}")
-            resolved = (workspace_root / rel_path).resolve()
-            try:
-                resolved.relative_to(workspace_root)
-            except ValueError as exc:
-                raise ValueError(f"workspace path escape rejected: {rel_text}") from exc
-            if not allow_missing and not resolved.exists():
-                raise FileNotFoundError(f"workspace path does not exist: {rel_text}")
-            return resolved
+            return self._safe_session_path(rel, allow_missing=allow_missing)
 
         written_files: list[str] = []
         if files:
@@ -1743,46 +1787,37 @@ class AgentRunner:
             except Exception as e:  # noqa: BLE001
                 return {"error": f"failed to prepare workspace files: {e}"}
 
-        if workspace_root is not None:
-            call_kwargs.setdefault("workspace", str(workspace_root))
-            call_kwargs.setdefault("workspace_dir", str(workspace_root))
-            if workdir:
-                try:
-                    resolved_workdir = _safe_workspace_path(workdir)
-                except Exception as e:  # noqa: BLE001
-                    return {"error": f"invalid workdir: {e}"}
-                call_kwargs.setdefault("workdir", str(resolved_workdir))
-                call_kwargs.setdefault("cwd", str(resolved_workdir))
+        # Expose the workspace to the script. Default cwd/workdir to the
+        # session root so scripts that read relative paths (or chdir) just work.
+        call_kwargs.setdefault("workspace", str(workspace_root))
+        call_kwargs.setdefault("workspace_dir", str(workspace_root))
+        if workdir:
+            try:
+                resolved_workdir = _safe_workspace_path(workdir)
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"invalid workdir: {e}"}
+            resolved_workdir.mkdir(parents=True, exist_ok=True)
+            call_kwargs.setdefault("workdir", str(resolved_workdir))
+            call_kwargs.setdefault("cwd", str(resolved_workdir))
+        else:
+            call_kwargs.setdefault("workdir", str(workspace_root))
+            call_kwargs.setdefault("cwd", str(workspace_root))
 
-            # Rewrite common input path kwargs from workspace-relative to absolute
-            # paths so existing scripts such as merge_deck.py can consume them
-            # without depending on process-wide chdir.
-            path_like_keys = {
-                "deck",
-                "deck_folder",
-                "folder",
-                "input",
-                "input_file",
-                "input_path",
-                "source",
-                "source_file",
-                "source_path",
-                "target",
-                "target_file",
-                "target_path",
-            }
-            for key, value in list(call_kwargs.items()):
-                if key in {"output", "output_path", "out", "outfile"}:
-                    continue
-                if key not in path_like_keys or not isinstance(value, str):
-                    continue
-                value_text = value.strip()
-                if not value_text or "://" in value_text or _Path(value_text).is_absolute():
-                    continue
-                try:
-                    call_kwargs[key] = str(_safe_workspace_path(value_text))
-                except Exception as e:  # noqa: BLE001
-                    return {"error": f"invalid workspace path for kwarg {key}: {e}"}
+        # Rewrite workspace-relative path kwargs to absolute paths so existing
+        # scripts such as merge_deck.py can consume them without depending on
+        # process-wide chdir.
+        for key, value in list(call_kwargs.items()):
+            if key in {"output", "output_path", "out", "outfile"}:
+                continue
+            if key not in path_like_keys or not isinstance(value, str):
+                continue
+            value_text = value.strip()
+            if not value_text or "://" in value_text or _Path(value_text).is_absolute():
+                continue
+            try:
+                call_kwargs[key] = str(_safe_workspace_path(value_text))
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"invalid workspace path for kwarg {key}: {e}"}
 
         for k in ("output", "output_path", "out", "outfile"):
             call_kwargs.setdefault(k, str(target_path))
@@ -1905,9 +1940,8 @@ class AgentRunner:
         }
         if output_path:
             info["output_path"] = output_path
-        if workspace_root is not None:
-            info["workspace"] = str(workspace_root)
-            info["workspace_files"] = written_files
+        info["workspace"] = str(workspace_root)
+        info["workspace_files"] = written_files
         self._saved_files.append(info)
         return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示文件卡片。"}
 
