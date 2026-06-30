@@ -2,15 +2,18 @@
   <rect width="1024" height="1024" rx="224" fill="#C96442"/>
 
   <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M274 374 512 232 750 374 750 650 512 792 274 650Z" stroke-width="32"/>
-    <path d="M274 374 512 512 750 374M274 650 512 512 750 650M512 232V512M512 512V792" stroke-width="24" opacity=".95"/>
-    <circle cx="512" cy="512" r="78" fill="#C96442" stroke-width="30"/>
-    <circle cx="512" cy="512" r="24" stroke-width="16"/>
-    <circle cx="274" cy="374" r="42" fill="#C96442" stroke-width="24"/>
-    <circle cx="512" cy="232" r="42" fill="#C96442" stroke-width="24"/>
-    <circle cx="750" cy="374" r="42" fill="#C96442" stroke-width="24"/>
-    <circle cx="750" cy="650" r="42" fill="#C96442" stroke-width="24"/>
-    <circle cx="512" cy="792" r="42" fill="#C96442" stroke-width="24"/>
-    <circle cx="274" cy="650" r="42" fill="#C96442" stroke-width="24"/>
+    <path d="M512 198 780 404 678 736 346 736 244 404Z" stroke-width="64"/>
+    <path d="M512 198V512M780 404 512 512M678 736 512 512M346 736 512 512M244 404 512 512" stroke-width="54"/>
   </g>
+
+  <g fill="#fff">
+    <circle cx="512" cy="512" r="120"/>
+    <circle cx="512" cy="198" r="76"/>
+    <circle cx="780" cy="404" r="76"/>
+    <circle cx="678" cy="736" r="76"/>
+    <circle cx="346" cy="736" r="76"/>
+    <circle cx="244" cy="404" r="76"/>
+  </g>
+
+  <circle cx="512" cy="512" r="38" fill="#C96442"/>
 </svg>
