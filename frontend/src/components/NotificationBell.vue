@@ -83,6 +83,8 @@ async function onItemClick(n: any) {
   const d = n.detail_json || {}
   if (n.type === 'task_run' && d.task_id) {
     router.push(`/tasks/${d.task_id}/runs`)
+  } else if (n.type === 'local_models') {
+    router.push('/settings/models?discover=1')
   } else if (n.link_url) {
     // Strip our APP_BASE_URL prefix if it matches
     const url = String(n.link_url)

@@ -119,6 +119,23 @@ def _patch_lark_disconnect_bug() -> None:
     _WsClient._h3c_disconnect_patched = True
 
 
+class _LenientLock(asyncio.Lock):
+    """An asyncio.Lock whose ``release()`` is a no-op when not held.
+
+    lark-oapi's ws.Client._connect()/_disconnect() call ``self._lock.release()``
+    in a ``finally`` even when the lock isn't actually held (its early ``return``
+    at connect happens *before* the try/finally that acquired it, and the ws
+    client runs in its own thread/loop where the lock state can desync). The
+    stock Lock raises ``RuntimeError: Lock is not acquired`` there, which killed
+    the ws thread and surfaced as a scary startup traceback. Tolerating an
+    unbalanced release fixes the crash at its source for both methods.
+    """
+
+    def release(self) -> None:
+        if self.locked():
+            super().release()
+
+
 _patch_lark_disconnect_bug()
 
 
@@ -295,6 +312,15 @@ class _FeishuClient:
             event_handler=handler,
             log_level=lark.LogLevel.WARNING,
         )
+        # Swap in a lock that tolerates unbalanced release() so lark's
+        # _connect/_disconnect finally blocks can't crash the ws thread with
+        # "RuntimeError: Lock is not acquired". Safe to replace here: the lock is
+        # created in the client's __init__ and only binds to a loop on first use
+        # (which happens later, inside self._ws.start() on the ws thread).
+        try:
+            self._ws._lock = _LenientLock()
+        except Exception:  # pragma: no cover — never block startup on this
+            pass
 
         def _run() -> None:
             try:

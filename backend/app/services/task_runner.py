@@ -233,14 +233,10 @@ async def execute_task(task_id: int, *, triggered_by: str = "manual",
                         had_error = d.get("message") or "执行错误"
 
             timed_out = False
-            try:
-                await asyncio.wait_for(_consume(), timeout=max(10, task.max_runtime_seconds))
-            except asyncio.TimeoutError:
-                timed_out = True
-            except asyncio.CancelledError:
-                # Must commit the cancelled status BEFORE re-raising, otherwise
-                # the task stays "running" forever in the database and every
-                # subsequent cron trigger is skipped by the concurrency policy.
+
+            async def _cancelled_bailout() -> None:
+                # Commit 'cancelled' BEFORE re-raising, otherwise the run stays
+                # "running" forever and every later cron fire is skipped.
                 run.status = "cancelled"
                 run.finished_at = datetime.now(timezone.utc)
                 if run.started_at:
@@ -251,9 +247,54 @@ async def execute_task(task_id: int, *, triggered_by: str = "manual",
                 await db.commit()
                 await db.refresh(run)
                 await _notify_run(db, task, run, owner)
+
+            # Run the stream in an explicitly-managed task instead of
+            # `asyncio.wait_for(_consume(), ...)`. `wait_for` cancels the inner
+            # coroutine on timeout and then AWAITS it to finish unwinding — but
+            # AgentRunner.stream()'s `finally` block does `await`/`yield` during
+            # teardown, and an async generator that yields while being torn down
+            # does not cooperate with cancellation. So `wait_for` would hang
+            # forever waiting for a coroutine that never dies, the run stayed
+            # "running" past its budget, and only the external watchdog reaped it
+            # (~1920s) — leaving the conversation blank and skipping every next
+            # fire. Here we cap the wait ourselves, cancel, allow a bounded grace
+            # for cleanup, then ABANDON the task if it still refuses to finish so
+            # the scheduler always makes progress. An orphaned stream self-cleans
+            # when its httpx read-timeout fires.
+            consume_task = asyncio.create_task(_consume())
+
+            def _swallow(t: asyncio.Task) -> None:
+                # Retrieve any exception from an abandoned task so asyncio does
+                # not log "Task exception was never retrieved".
+                if not t.cancelled():
+                    t.exception()
+            consume_task.add_done_callback(_swallow)
+
+            budget = max(10, task.max_runtime_seconds)
+            try:
+                done, _pending = await asyncio.wait({consume_task}, timeout=budget)
+            except asyncio.CancelledError:
+                consume_task.cancel()
+                await _cancelled_bailout()
                 raise
-            except Exception as e:
-                had_error = f"{type(e).__name__}: {e}"
+
+            if consume_task not in done:
+                # Hard timeout: exceeded budget (or the stream refused to yield/
+                # cancel). Cancel it, give a bounded grace to unwind, then move on.
+                timed_out = True
+                consume_task.cancel()
+                try:
+                    await asyncio.wait({consume_task}, timeout=30)
+                except asyncio.CancelledError:
+                    await _cancelled_bailout()
+                    raise
+            elif consume_task.cancelled():
+                await _cancelled_bailout()
+                raise asyncio.CancelledError()
+            else:
+                exc = consume_task.exception()
+                if exc is not None:
+                    had_error = f"{type(exc).__name__}: {exc}"
 
             # persist assistant message
             content_payload: dict[str, Any] = {"text": "".join(text_parts)}

@@ -117,6 +117,9 @@ export const api = {
   updateModel: (id: number, p: any) => http.patch(`/api/admin/models/${id}`, p).then((r) => r.data),
   deleteModel: (id: number) => http.delete(`/api/admin/models/${id}`).then((r) => r.data),
   testModel: (id: number) => http.post(`/api/admin/models/${id}/test`).then((r) => r.data),
+  discoverLocalModels: () => http.get('/api/admin/models/discover').then((r) => r.data),
+  importLocalModels: (items: any[]) =>
+    http.post('/api/admin/models/import', { items }).then((r) => r.data),
 
   // health check (model connectivity + expert model binding)
   healthCheck: () => http.get('/api/admin/health').then((r) => r.data),

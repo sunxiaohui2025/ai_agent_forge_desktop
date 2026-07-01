@@ -174,6 +174,25 @@
       </section>
     </div>
     <WsFilePreview />
+
+    <!-- First-run onboarding: prompt the user to configure a model when none exist -->
+    <el-dialog
+      v-model="showModelGuide" width="440px" align-center
+      :show-close="false" class="model-guide-dialog"
+    >
+      <div class="guide-body">
+        <div class="guide-icon"><el-icon :size="30"><MagicStick /></el-icon></div>
+        <h3 class="guide-title">先配置一个模型吧</h3>
+        <p class="guide-desc">
+          还没有可用的大模型。配置一个模型后，才能开始和你的专家对话。
+          你可以选择厂商填入 API Key，也可以一键导入本机已安装的模型（Claude Code / Codex / CC Switch）。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="dismissModelGuide">稍后再说</el-button>
+        <el-button type="primary" @click="goConfigureModel">去配置模型</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -181,6 +200,7 @@
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { api } from '@/api'
 import { useChat } from '@/stores/chat'
 import { useWorkspace } from '@/stores/workspace'
 import { useAuth } from '@/stores/auth'
@@ -215,8 +235,31 @@ onMounted(async () => {
   if (!chat.loaded) await chat.loadInit()
   if (!ws.loaded) await ws.load()
   window.addEventListener('workbuddy:open-terminal', onOpenTerminalPanel)
+  maybeShowModelGuide()
 })
 onBeforeUnmount(() => window.removeEventListener('workbuddy:open-terminal', onOpenTerminalPanel))
+
+// ── First-run guide: nudge the user to configure a model when none exist ──
+const showModelGuide = ref(false)
+function guideSeenKey() {
+  return `onboarding_models_seen:${auth.user?.id ?? 'local'}`
+}
+async function maybeShowModelGuide() {
+  // Only nudge once per user, and only while there are genuinely no models.
+  if (localStorage.getItem(guideSeenKey())) return
+  try {
+    const models = await api.models()
+    if (!models || !models.length) showModelGuide.value = true
+  } catch { /* ignore — don't block the app on a transient error */ }
+}
+function dismissModelGuide() {
+  localStorage.setItem(guideSeenKey(), '1')
+  showModelGuide.value = false
+}
+function goConfigureModel() {
+  dismissModelGuide()
+  router.push('/settings/models')
+}
 
 const plainChats = computed(() => chat.convs.filter((c: any) => !c.workspace_id))
 function tasksOf(wid: number) {
@@ -702,4 +745,16 @@ async function onLogout() {
   opacity: 0;
   pointer-events: none;
 }
+
+/* ── First-run model guide dialog ── */
+.guide-body { text-align: center; padding: 6px 6px 0; }
+.guide-icon {
+  width: 60px; height: 60px; margin: 0 auto 16px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--m-primary-soft, #eef2ff);
+  color: var(--m-primary, #2f6df6);
+}
+.guide-title { margin: 0 0 10px; font-size: 18px; font-weight: 720; color: var(--m-text, #1c1c1a); }
+.guide-desc { margin: 0; font-size: 13px; line-height: 1.7; color: var(--m-text-secondary, #6b6b66); }
 </style>

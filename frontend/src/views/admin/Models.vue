@@ -1,7 +1,12 @@
 <template>
   <div class="page">
     <div class="page-head"><span class="page-title">模型管理</span>
-      <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建模型</el-button>
+      <div style="display:flex;gap:8px">
+        <el-button @click="openDiscover" :loading="discovering">
+          <el-icon><Search /></el-icon>扫描本地模型
+        </el-button>
+        <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建模型</el-button>
+      </div>
     </div>
     <div class="model-grid">
       <article v-for="row in rows" :key="row.id" class="model-card">
@@ -66,6 +71,41 @@
       </div>
     </el-dialog>
 
+    <!-- Discover locally-installed model configs (Claude Code / Codex / CC Switch) -->
+    <el-dialog v-model="discoverVisible" title="扫描到的本地模型" width="760px">
+      <div v-if="!candidates.length" class="discover-empty">
+        没有扫描到本地模型配置。确认已安装并配置 Claude Code、Codex 或 CC Switch 后重试。
+      </div>
+      <template v-else>
+        <div class="discover-hint">
+          从本机 Claude Code / Codex / CC Switch 的配置中读取（只读，不会修改这些文件）。
+          勾选要导入的模型，标记「需填 Key」的项请补上密钥。
+        </div>
+        <div v-for="(c, i) in candidates" :key="i" class="discover-row" :class="{ done: c.already_imported }">
+          <el-checkbox v-model="c._checked" :disabled="c.already_imported" />
+          <div class="discover-main">
+            <div class="discover-name mono">{{ c.model_id }}</div>
+            <div class="discover-sub">
+              <span class="src-tag">{{ c.source_label }}</span>
+              <span>{{ c.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容' }}</span>
+              <span class="mono" v-if="c.base_url">{{ c.base_url }}</span>
+            </div>
+          </div>
+          <el-tag v-if="c.already_imported" type="info" size="small">已导入</el-tag>
+          <el-tag v-else-if="c.has_key" type="success" size="small">含密钥</el-tag>
+          <el-input
+            v-else v-model="c._api_key" size="small" placeholder="需填 API Key"
+            show-password style="width:190px" />
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="discoverVisible = false">关闭</el-button>
+        <el-button type="primary" :disabled="!selectedCount" :loading="importing" @click="onImport">
+          导入选中 ({{ selectedCount }})
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="visible" :title="editing ? '编辑模型' : `配置 ${form._presetName || '模型'}`" width="640px">
       <el-form :model="form" label-width="100px">
         <el-form-item v-if="form._note" label=" ">
@@ -123,6 +163,7 @@
 </template>
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 
@@ -179,7 +220,56 @@ async function load() { rows.value = await api.models() }
 onMounted(async () => {
   await load()
   try { presets.value = await api.modelPresets() } catch { presets.value = [] }
+  // Auto-open the discover dialog when arriving via the startup notification link.
+  if (route.query.discover) openDiscover()
 })
+
+// ── Local model discovery (read-only scan of Claude Code / Codex / CC Switch) ──
+const route = useRoute()
+const discoverVisible = ref(false)
+const discovering = ref(false)
+const importing = ref(false)
+const candidates = ref<any[]>([])
+const selectedCount = computed(() => candidates.value.filter((c) => c._checked && !c.already_imported).length)
+
+async function openDiscover() {
+  discovering.value = true
+  try {
+    const list = await api.discoverLocalModels()
+    candidates.value = list.map((c: any) => ({
+      ...c,
+      _checked: !c.already_imported,   // pre-select new ones
+      _api_key: '',
+    }))
+    discoverVisible.value = true
+  } catch (e: any) {
+    ElMessage.error('扫描失败: ' + (e?.response?.data?.detail || e?.message || ''))
+  } finally { discovering.value = false }
+}
+
+async function onImport() {
+  const items = candidates.value
+    .filter((c) => c._checked && !c.already_imported)
+    .map((c) => ({
+      code: c.code, provider: c.provider, model_id: c.model_id,
+      base_url: c.base_url, source: c.source,
+      // Prefer the source's own key; fall back to a user-entered one.
+      api_key: c.has_key ? undefined : (c._api_key || undefined),
+    }))
+  const missing = items.filter((it) => !it.api_key && !candidates.value.find((c) => c.code === it.code)?.has_key)
+  if (missing.length) {
+    ElMessage.warning(`有 ${missing.length} 个模型未填写 API Key，将以「未配置密钥」状态导入`)
+  }
+  importing.value = true
+  try {
+    const res = await api.importLocalModels(items)
+    ElMessage.success(`导入完成：新增 ${res.created} 个，跳过 ${res.skipped} 个`)
+    discoverVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error('导入失败: ' + (e?.response?.data?.detail || e?.message || ''))
+  } finally { importing.value = false }
+}
 
 // Step 1 → open the vendor picker.
 function openCreate() {
@@ -335,5 +425,17 @@ async function onTest(row: any) {
 .qa-label { font-size: 11px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
 .qa-content { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--m-text); }
 .qa-stats { display: flex; gap: 16px; font-size: 12px; color: var(--m-text-secondary); margin-top: 8px; }
+.discover-empty { padding: 24px 8px; color: var(--m-text-secondary, #8a8a84); font-size: 13px; text-align: center; }
+.discover-hint { font-size: 12px; color: var(--m-text-secondary, #8a8a84); line-height: 1.5; margin-bottom: 12px; }
+.discover-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--m-border, #eeeeeb);
+  border-radius: 10px; margin-bottom: 8px;
+}
+.discover-row.done { opacity: .55; }
+.discover-main { flex: 1; min-width: 0; }
+.discover-name { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discover-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; font-size: 11.5px; color: #8a8a84; }
+.discover-sub .src-tag { color: #56554e; font-weight: 600; }
 @media (max-width: 900px) { .model-grid { grid-template-columns: 1fr; } }
 </style>

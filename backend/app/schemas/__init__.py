@@ -141,6 +141,35 @@ class ModelOut(ORM):
     extra_params: dict[str, Any] = Field(default_factory=dict)
 
 
+class LocalModelCandidateOut(BaseModel):
+    """A locally-discovered model config (from Claude Code / Codex / CC Switch)."""
+    source: str
+    source_label: str
+    code: str
+    provider: str
+    model_id: str
+    base_url: str | None = None
+    needs_key: bool = False           # api_key missing / placeholder — user must fill
+    has_key: bool = False             # a usable key was found in the source
+    already_imported: bool = False    # a matching model already exists in the DB
+
+
+class ModelImportItem(BaseModel):
+    """One candidate the user chose to import. `api_key` overrides/supplies the
+    key when the source only had a placeholder."""
+    code: str
+    provider: str
+    model_id: str
+    base_url: str | None = None
+    api_key: str | None = None
+    source: str | None = None
+    max_tokens: int = 8192
+
+
+class ModelImportIn(BaseModel):
+    items: list[ModelImportItem] = Field(default_factory=list)
+
+
 # ---------- MCP ----------
 class MCPIn(BaseModel):
     name: str

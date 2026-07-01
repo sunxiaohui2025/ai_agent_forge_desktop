@@ -224,29 +224,41 @@ async def _seed_builtin_models() -> None:
     STALE_URL_PREFIXES = ("http://1.181.141.96:6018/",)
 
     async with SessionLocal() as db:
-        stale_query = select(Model).where(
-            Model.code.in_(STALE_CODES)
-        )
+        # NOTE: build a single OR-filter instead of `.union()` here. A UNION of
+        # two ORM-entity selects returns *rows* whose first column is the id, so
+        # `.scalars().all()` yields ints (not Model objects) — which crashed the
+        # whole seed with "'int' object has no attribute 'id'".
+        from sqlalchemy import or_
+        conditions = [Model.code.in_(STALE_CODES)]
         for url_pfx in STALE_URL_PREFIXES:
-            stale_query = stale_query.union(
-                select(Model).where(Model.base_url.like(f"{url_pfx}%"))
-            )
-        stale_result = await db.execute(stale_query)
-        stale_models = stale_result.scalars().all()
+            conditions.append(Model.base_url.like(f"{url_pfx}%"))
+        stale_models = (await db.execute(
+            select(Model).where(or_(*conditions))
+        )).scalars().all()
         if stale_models:
-            # Unbind the default agent from any stale model to avoid a broken
-            # reference after deletion.
             stale_ids = {m.id for m in stale_models}
-            agents_hooked = (await db.execute(
-                select(Agent).where(Agent.default_model_id.in_(stale_ids))
-            )).scalars().all()
-            for ag in agents_hooked:
-                ag.default_model_id = None
-            for m in stale_models:
+            # SAFETY: never delete a model the user is actively using. Old builds
+            # leaked hardcoded models, but if one is still bound to an agent (as
+            # default OR fallback) the user depends on it — purging it would break
+            # their agents and every scheduled task. Only remove genuinely
+            # orphaned leaked models. (The previous version also ignored fallback
+            # bindings and never committed, so it was a silent no-op.)
+            in_use: set[int] = set()
+            for dm, fm in (await db.execute(
+                select(Agent.default_model_id, Agent.fallback_model_id)
+            )).all():
+                if dm in stale_ids:
+                    in_use.add(dm)
+                if fm in stale_ids:
+                    in_use.add(fm)
+            deletable = [m for m in stale_models if m.id not in in_use]
+            for m in deletable:
                 await db.delete(m)
-            logging.getLogger(__name__).info(
-                "cleaned %d stale built-in models from old build", len(stale_models)
-            )
+            if deletable:
+                await db.commit()
+                logging.getLogger(__name__).info(
+                    "cleaned %d orphaned stale built-in models from old build", len(deletable)
+                )
 
     # ── Seed from env / file ──────────────────────────────────────
     specs = _load_builtin_models_from_env()
@@ -625,6 +637,56 @@ async def _seed_builtin_agents() -> None:
         await db.commit()
 
 
+async def _scan_local_models_notify() -> None:
+    """Read-only scan for locally-installed LLM configs on boot; notify the user.
+
+    Discovers models configured in Claude Code / Codex / CC Switch and, if any
+    are not yet in the model manager, drops a single in-app notification so the
+    user can review + import them. Never writes to those external files and never
+    auto-imports. To avoid spamming on every restart, we skip creating a new
+    notice while an earlier unread "local_models" notice is still pending.
+    """
+    from sqlalchemy import select
+    from .db.session import SessionLocal
+    from .db.models import Model, Notification
+    from .services.local_model_scan import scan_local_models
+
+    candidates = scan_local_models()
+    if not candidates:
+        return
+
+    async with SessionLocal() as db:
+        existing = (await db.execute(select(Model))).scalars().all()
+        existing_keys = {((m.base_url or "").rstrip("/"), m.model_id) for m in existing}
+        existing_codes = {m.code for m in existing}
+        new_cands = [
+            c for c in candidates
+            if ((c["base_url"] or "").rstrip("/"), c["model_id"]) not in existing_keys
+            and c["code"] not in existing_codes
+        ]
+        if not new_cands:
+            return
+        # Skip if an unread local-models notice is already pending (anti-spam).
+        pending = (await db.execute(
+            select(Notification).where(
+                Notification.user_id == 1,
+                Notification.type == "local_models",
+                Notification.read_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if pending is not None:
+            return
+        sources = sorted({c["source_label"].split(" · ")[0] for c in new_cands})
+        db.add(Notification(
+            user_id=1, type="local_models",
+            title=f"发现 {len(new_cands)} 个本地模型配置",
+            body=f"检测到来自 {', '.join(sources)} 的模型配置，可在「模型管理」中查看并导入。",
+            link_url="/settings/models?discover=1",
+            detail_json={"count": len(new_cands)},
+        ))
+        await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -656,6 +718,10 @@ async def lifespan(app: FastAPI):
         await _ensure_default_agent()
     except Exception:
         logging.getLogger(__name__).exception("default agent ensure failed")
+    try:
+        await _scan_local_models_notify()
+    except Exception:
+        logging.getLogger(__name__).exception("local model scan failed")
     cleanup = asyncio.create_task(cleanup_loop())
     sch = get_scheduler()
     try:

@@ -2121,6 +2121,18 @@ class AgentRunner:
                 for rid in list(self._pending_request_ids):
                     _cancel(rid, "对话已结束")
                 self._pending_request_ids.clear()
+            # If we are being torn down (GeneratorExit) or cancelled, do NOT run
+            # async cleanup or `yield` here: an async generator that awaits/yields
+            # while unwinding a GeneratorExit raises "async generator ignored
+            # GeneratorExit" and refuses to finish cancelling. That is exactly what
+            # left scheduled task runs wedged in "running" until the external
+            # watchdog reaped them (~budget+grace) with a blank conversation. When
+            # torn down we release the light sync state above and return quietly;
+            # the consumer already stopped reading.
+            import sys as _sys
+            _exc = _sys.exc_info()[0]
+            if _exc is not None and issubclass(_exc, (GeneratorExit, asyncio.CancelledError)):
+                return
             # If the model dumped a large code block to text instead of calling
             # save_output_file, extract & persist it as a fallback.
             if self._fallback_text_buf:
@@ -2481,7 +2493,17 @@ class AgentRunner:
                     for choice in chunk.choices or []:
                         delta = getattr(choice, "delta", None)
                         if delta:
-                            reasoning = getattr(delta, "reasoning_content", None)
+                            # Reasoning models expose their chain-of-thought under
+                            # different field names: DeepSeek/OpenAI use
+                            # `reasoning_content`, while some OpenAI-compatible
+                            # gateways (e.g. this qwen3.5 endpoint) stream it as
+                            # plain `reasoning`. The SDK drops unknown fields into
+                            # `model_extra`, so check there too. Missing this just
+                            # silently discarded all thinking output.
+                            reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                            if reasoning is None:
+                                _extra = getattr(delta, "model_extra", None) or {}
+                                reasoning = _extra.get("reasoning_content") or _extra.get("reasoning")
                             if reasoning:
                                 reasoning_buf += reasoning
                                 yield StreamEvent("thinking", {"text": reasoning})

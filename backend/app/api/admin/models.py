@@ -8,9 +8,13 @@ from ...deps import require_admin_or_operator
 from ...services.audit import audit
 from ...db.models import User
 from ...core.crypto import encrypt_str
-from ...schemas import ModelIn, ModelOut
+from ...schemas import ModelIn, ModelOut, LocalModelCandidateOut, ModelImportIn
 
 router = APIRouter(prefix="/api/admin/models", tags=["admin-models"])
+
+
+def _norm_url(u: str | None) -> str:
+    return (u or "").rstrip("/")
 
 
 def _to_out(m: Model) -> ModelOut:
@@ -33,6 +37,72 @@ async def list_presets(_=Depends(require_admin_or_operator)):
     """Vendor presets for one-click model setup (select vendor → fill key)."""
     from ...services.provider_presets import PROVIDER_PRESETS
     return PROVIDER_PRESETS
+
+
+@router.get("/discover", response_model=list[LocalModelCandidateOut])
+async def discover_local_models(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
+    """Read-only scan of locally-installed LLM tools (Claude Code / Codex / CC
+    Switch). Returns import candidates, marking those already present in the DB.
+
+    This never writes to those external config files, and never persists here —
+    importing is an explicit follow-up POST to /import.
+    """
+    from ...services.local_model_scan import scan_local_models
+    candidates = scan_local_models()
+    existing = (await db.execute(select(Model))).scalars().all()
+    existing_keys = {(_norm_url(m.base_url), m.model_id) for m in existing}
+    existing_codes = {m.code for m in existing}
+    out = []
+    for c in candidates:
+        already = (
+            (_norm_url(c["base_url"]), c["model_id"]) in existing_keys
+            or c["code"] in existing_codes
+        )
+        out.append(LocalModelCandidateOut(
+            source=c["source"], source_label=c["source_label"], code=c["code"],
+            provider=c["provider"], model_id=c["model_id"], base_url=c["base_url"],
+            needs_key=c["needs_key"], has_key=not c["needs_key"],
+            already_imported=already,
+        ))
+    return out
+
+
+@router.post("/import")
+async def import_local_models(payload: ModelImportIn, db: AsyncSession = Depends(get_db),
+                              actor: User = Depends(require_admin_or_operator)):
+    """Import user-selected local candidates into the model manager.
+
+    Skips items whose (base_url, model_id) or code already exists so re-running
+    is safe. Codes are de-duplicated with a numeric suffix on collision.
+    """
+    existing = (await db.execute(select(Model))).scalars().all()
+    existing_keys = {(_norm_url(m.base_url), m.model_id) for m in existing}
+    used_codes = {m.code for m in existing}
+    created, skipped = 0, 0
+    for item in payload.items:
+        if (_norm_url(item.base_url), item.model_id) in existing_keys:
+            skipped += 1
+            continue
+        code = item.code
+        if code in used_codes:
+            i = 2
+            while f"{code}-{i}" in used_codes:
+                i += 1
+            code = f"{code}-{i}"
+        m = Model(
+            code=code, provider=item.provider, model_id=item.model_id,
+            base_url=item.base_url, max_tokens=item.max_tokens, enabled=True,
+            api_key_enc=encrypt_str(item.api_key) if item.api_key else None,
+            extra_params_json={},
+        )
+        db.add(m)
+        used_codes.add(code)
+        existing_keys.add((_norm_url(item.base_url), item.model_id))
+        created += 1
+    if created:
+        await audit(db, actor.id, "model.import_local", target_type="model", target_id=None)
+        await db.commit()
+    return {"ok": True, "created": created, "skipped": skipped}
 
 
 @router.post("", response_model=ModelOut)
