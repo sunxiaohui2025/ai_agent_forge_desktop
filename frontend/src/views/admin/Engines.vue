@@ -5,6 +5,9 @@
     <p class="lead">
       执行引擎决定「谁来驱动智能体的每一轮对话」。这里选择的是<b>默认执行引擎</b>——
       所有智能体默认跟随它；你也可以在下方为单个智能体单独指定其它引擎。
+      <br />
+      <b>执行时的引擎优先级：</b>单个智能体的单独指定 ＞ 默认执行引擎 ＞ 按模型 provider 自动推断。
+      即：某智能体单独指定过引擎，就用它自己的；显示「跟随默认」的才用默认引擎。
       切换引擎不影响已配置的模型、插件与 MCP，它们会被所选引擎复用。
       内置引擎随应用打包、始终可用；命令行引擎需本机安装对应 CLI（可点「安装」自动装）。
     </p>
@@ -66,7 +69,12 @@
 
     <!-- Per-agent overrides -->
     <div class="section-title agents-title">按智能体单独指定（可选）</div>
-    <p class="sub-lead">默认「跟随默认引擎」。如需让某个智能体使用不同引擎，在此单独设置；也可用右侧下拉一键批量应用到全部智能体。</p>
+    <div class="default-banner">
+      <el-icon :size="16"><SetUp /></el-icon>
+      <span>当前默认执行引擎：<b>{{ currentLabel }}</b></span>
+      <span class="banner-hint">未单独指定的智能体都跟随它</span>
+    </div>
+    <p class="sub-lead">如需让某个智能体使用不同引擎，在此单独设置；也可用下方下拉一键批量应用到全部智能体。</p>
     <div class="bulk-bar">
       <span class="bulk-label">一键批量设置：</span>
       <el-select
@@ -198,12 +206,24 @@ async function applyDefault() {
     ElMessage.warning(`「${target.label}」在本机不可用，请先安装其命令行`)
     return
   }
+  const label = selected.value ? labelOf(selected.value) : '自动（按模型 provider 推断）'
+  try {
+    await ElMessageBox.confirm(
+      `确定切换默认执行引擎为「${label}」吗？\n\n确认后将同时把全部智能体一键切换为该默认引擎（清除各智能体的单独指定）。之后你仍可为单个智能体单独指定其它引擎。`,
+      '切换默认执行引擎',
+      { confirmButtonText: '确认切换并应用到全部', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
   saving.value = true
   try {
+    // 1) set app-wide default
     const r = await api.setGlobalEngine(selected.value || null)
     current.value = r?.engine || ''
     selected.value = current.value
-    ElMessage.success(`默认执行引擎已设为「${currentLabel.value}」`)
+    // 2) one-click apply to ALL agents (clear per-agent overrides → follow default)
+    await api.bulkSetAgentEngine(null)
+    agents.value.forEach((a) => { a.engine_kind = null })
+    ElMessage.success(`默认执行引擎已设为「${currentLabel.value}」，全部智能体已切换为跟随默认`)
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '设置失败')
   } finally {
@@ -333,6 +353,14 @@ onMounted(load)
 .footer-hint b { color: #272724; }
 
 /* Per-agent override list */
+.default-banner {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding: 10px 14px;
+  border: 1px solid #e6efe9; border-radius: 12px;
+  background: #f2f9f5; color: #2c6a48; font-size: 13px;
+}
+.default-banner b { color: #1f5637; font-weight: 700; }
+.banner-hint { color: #8a9d92; font-size: 12px; margin-left: 2px; }
 .bulk-bar {
   display: flex; align-items: center; gap: 10px;
   margin: 0 0 12px; padding: 12px 14px;
