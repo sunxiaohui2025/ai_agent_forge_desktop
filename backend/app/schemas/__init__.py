@@ -278,6 +278,9 @@ class AgentIn(BaseModel):
     effort: EffortLevel = "medium"
     parsed_content_limit: int | None = Field(default=None, ge=0, le=2_000_000)
     work_dir: str | None = None
+    # None/"" → 按模型 provider 自动推断执行引擎；显式设置可固定某个引擎
+    # （如 "claude-agent-sdk" / "openai-compat" / 未来的 "codex-cli"）。
+    engine_kind: str | None = None
     enabled: bool = True
     is_default: bool = False
     skill_ids: list[int] = Field(default_factory=list)
@@ -301,6 +304,7 @@ class AgentOut(ORM):
     effort: EffortLevel = "medium"
     parsed_content_limit: int | None = None
     work_dir: str | None = None
+    engine_kind: str | None = None
     enabled: bool
     is_default: bool = False
     skill_ids: list[int] = []

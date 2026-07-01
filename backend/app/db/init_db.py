@@ -43,6 +43,9 @@ async def main():
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS work_dir VARCHAR(1024)"
         )
         await conn.exec_driver_sql(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS engine_kind VARCHAR(32)"
+        )
+        await conn.exec_driver_sql(
             "ALTER TABLE models ADD COLUMN IF NOT EXISTS extra_params_json JSONB NOT NULL DEFAULT '{}'::jsonb"
         )
         await conn.exec_driver_sql(

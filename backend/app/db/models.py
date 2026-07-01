@@ -150,6 +150,11 @@ class Agent(Base, TimestampMixin):
     # None = 不限制任务轮次（默认）。若设置，最少 30 轮，无上限。
     max_turns: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     effort: Mapped[str] = mapped_column(String(16), default="low", server_default="low")
+    # Which runtime engine executes this agent. None/"" → inferred from the
+    # model provider (see app/runtime/engines/registry.py). Set explicitly to
+    # pin a specific engine (e.g. "claude-agent-sdk", "openai-compat", or a
+    # future "codex-cli") independently of the model choice.
+    engine_kind: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     # File-parsing length cap fed into the model:
     #   None → use settings.PARSED_MARKDOWN_HARD_LIMIT
     #   0    → no cap (inject the full parsed markdown)

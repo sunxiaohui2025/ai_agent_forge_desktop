@@ -25,6 +25,7 @@ const routes = [
       { path: 'general', component: () => import('@/views/settings/General.vue') },
       { path: 'pets', component: () => import('@/views/settings/Pets.vue') },
       { path: 'models', component: () => import('@/views/admin/Models.vue') },
+      { path: 'engines', component: () => import('@/views/admin/Engines.vue') },
       { path: 'skills', redirect: '/plugins' },
       { path: 'mcp', redirect: '/plugins' },
       { path: 'usage', component: () => import('@/views/settings/Usage.vue') },

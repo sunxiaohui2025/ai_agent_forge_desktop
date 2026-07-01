@@ -19,6 +19,9 @@
         <router-link to="/settings/models" class="set-nav-item" active-class="active">
           <el-icon :size="15"><Cpu /></el-icon><span>模型 / Provider</span>
         </router-link>
+        <router-link to="/settings/engines" class="set-nav-item" active-class="active">
+          <el-icon :size="15"><SetUp /></el-icon><span>执行引擎</span>
+        </router-link>
 
         <div class="set-nav-group">系统</div>
         <router-link to="/settings/health" class="set-nav-item" active-class="active">

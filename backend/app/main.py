@@ -48,6 +48,10 @@ async def _auto_migrate() -> None:
                     await conn.exec_driver_sql(
                         "ALTER TABLE agents ADD COLUMN work_dir VARCHAR(1024)"
                     )
+                if "engine_kind" not in cols:
+                    await conn.exec_driver_sql(
+                        "ALTER TABLE agents ADD COLUMN engine_kind VARCHAR(32)"
+                    )
             except Exception:
                 pass
             # max_turns: NULL = 不限制轮次（默认）。旧库该列是 NOT NULL DEFAULT 15，
@@ -107,6 +111,8 @@ async def _auto_migrate() -> None:
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS parsed_content_limit INTEGER",
             # agents: optional default local working directory.
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS work_dir VARCHAR(1024)",
+            # agents: pinned runtime engine (NULL = infer from model provider).
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS engine_kind VARCHAR(32)",
             # call_logs: cache hit tokens from LLM prompt caching
             "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS cache_hit_tokens INTEGER NOT NULL DEFAULT 0",
         ]:
@@ -149,6 +155,24 @@ async def _seed_local_user() -> None:
                 role_id=admin_role.id,
             ))
         await db.commit()
+
+
+async def _hydrate_global_engine() -> None:
+    """Load the persisted global runtime-engine choice into the in-process
+    registry cache on startup, so `resolve_name` honours it from the first
+    request (before any admin page hits `/_engines`). No-op if unset.
+    """
+    from sqlalchemy import select
+    from .db.session import SessionLocal
+    from .db.models import SystemSetting
+    from .runtime import engines as _engines
+
+    async with SessionLocal() as db:
+        row = (await db.execute(
+            select(SystemSetting).where(SystemSetting.key == "runtime_engine")
+        )).scalar_one_or_none()
+        engine = (row.value_json or {}).get("engine") if row else None
+        _engines.set_global_default(engine or None)
 
 
 async def _ensure_default_agent() -> None:
@@ -743,6 +767,10 @@ async def lifespan(app: FastAPI):
         await _ensure_default_agent()
     except Exception:
         logging.getLogger(__name__).exception("default agent ensure failed")
+    try:
+        await _hydrate_global_engine()
+    except Exception:
+        logging.getLogger(__name__).exception("global engine hydrate failed")
     try:
         await _scan_local_models_notify()
     except Exception:

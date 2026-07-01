@@ -2044,13 +2044,18 @@ class AgentRunner:
                 "model_id": self.ctx.model.model_id,
                 "provider": self.ctx.model.provider,
             })
-        provider = (self.ctx.model.provider if self.ctx.model else "anthropic").lower()
+        # Resolve which runtime engine executes this turn. The registry picks by
+        # agent.engine_kind first (future-proof), then falls back to provider →
+        # engine mapping (current behaviour). New engines plug in here with zero
+        # changes to this method — see app/runtime/engines/.
+        from .engines import select as _select_engine
+        engine = _select_engine(self.ctx)
+        yield StreamEvent("engine", {"name": engine.name, "label": engine.label})
         primary_failed: tuple[type, str] | None = None
         primary_streamed_text = False
         try:
             try:
-                inner = (self._stream_via_sdk(user_text, files or []) if provider == "anthropic"
-                         else self._stream_via_openai(user_text, files or []))
+                inner = engine.stream(self, user_text, files or [])
                 async for ev in inner:
                     # Accumulate text for the fallback extractor (runs in finally)
                     if ev.type == "text":
@@ -2098,10 +2103,13 @@ class AgentRunner:
                         "provider": fb.provider,
                         "fallback": True,
                     })
-                    fb_provider = (fb.provider or "").lower()
+                    # Re-select engine for the fallback model (its provider may
+                    # differ → a different engine may be appropriate).
+                    fb_engine = _select_engine(self.ctx)
+                    yield StreamEvent("engine", {"name": fb_engine.name,
+                                                 "label": fb_engine.label, "fallback": True})
                     try:
-                        fb_inner = (self._stream_via_sdk(user_text, files or []) if fb_provider == "anthropic"
-                                    else self._stream_via_openai(user_text, files or []))
+                        fb_inner = fb_engine.stream(self, user_text, files or [])
                         async for ev in fb_inner:
                             if ev.type == "text":
                                 self._fallback_text_buf.append(ev.data.get("text", "") if isinstance(ev.data, dict) else "")
@@ -3194,6 +3202,7 @@ class AgentRunner:
                 except (asyncio.CancelledError, Exception):
                     pass
             if sandbox is not None:
+                import shutil as _shutil
                 _shutil.rmtree(sandbox, ignore_errors=True)
 
     async def _perm_keepalive_hook(self, input_data, tool_use_id, context):

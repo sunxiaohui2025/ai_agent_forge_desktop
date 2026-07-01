@@ -34,6 +34,65 @@ async def list_agents(db: AsyncSession = Depends(get_db), _=Depends(require_admi
     return [await _to_out(db, a) for a in rows]
 
 
+_ENGINE_SETTING_KEY = "runtime_engine"
+
+
+async def _load_global_engine(db: AsyncSession) -> str | None:
+    """Read the persisted global engine choice from SystemSetting."""
+    from ...db.models import SystemSetting
+
+    row = (await db.execute(
+        select(SystemSetting).where(SystemSetting.key == _ENGINE_SETTING_KEY)
+    )).scalar_one_or_none()
+    if row is None:
+        return None
+    return (row.value_json or {}).get("engine") or None
+
+
+@router.get("/_engines")
+async def list_engines(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
+    """List runtime engines and the current global selection.
+
+    Powers the 「执行引擎」 admin page. Each engine reports whether it is
+    actually available on THIS machine (in-process engines always are;
+    out-of-process CLI engines are probed for their binary) plus an install
+    hint for engines that aren't installed yet. `current` is the global
+    engine applied to every agent (empty → 自动/按 provider 推断).
+    """
+    from ...runtime import engines as _engines
+
+    # Keep the in-process cache in sync with what's persisted.
+    current = await _load_global_engine(db)
+    _engines.set_global_default(current)
+
+    items = []
+    for e in _engines.all_engines():
+        c = e.capabilities
+        manager = getattr(e, "install_manager", "") or ""
+        package = getattr(e, "install_package", "") or ""
+        items.append({
+            "name": e.name,
+            "label": e.label,
+            "available": e.is_available(),
+            "required_binary": getattr(e, "required_binary", "") or "",
+            "install_hint": getattr(e, "install_hint", "") or "",
+            "install_url": getattr(e, "install_url", "") or "",
+            "install_manager": manager,
+            "can_auto_install": bool(manager == "npm" and package),
+            "out_of_process": c.out_of_process,
+            "capabilities": {
+                "native_skills": c.native_skills,
+                "native_mcp": c.native_mcp,
+                "permission_gating": c.permission_gating,
+                "thinking_budget": c.thinking_budget,
+                "workspace_fs": c.workspace_fs,
+                "out_of_process": c.out_of_process,
+                "notes": c.notes,
+            },
+        })
+    return {"engines": items, "current": current or ""}
+
+
 @router.get("/{aid}", response_model=AgentOut)
 async def get_agent(aid: int, db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
@@ -94,6 +153,172 @@ async def delete_agent(aid: int, db: AsyncSession = Depends(get_db), actor: User
     await audit(db, actor.id, "agent.delete", target_type="agent", target_id=a.id)
     await db.delete(a); await db.commit()
     return {"ok": True}
+
+
+class SetEngineIn(BaseModel):
+    # None/"" → 跟随全局默认（不覆盖）；否则该智能体固定为此引擎
+    engine_kind: str | None = None
+
+
+def _validate_engine_or_400(kind: str):
+    """Validate an engine name against the registry + availability. Returns the
+    engine instance, or raises HTTP 400. Empty string is allowed (caller maps
+    it to "follow default / clear")."""
+    from ...runtime import engines as _engines
+
+    eng = _engines.get(kind)
+    if eng is None:
+        raise HTTPException(400, f"未知的执行引擎: {kind}")
+    if not eng.is_available():
+        raise HTTPException(
+            400,
+            f"引擎「{eng.label}」在本机不可用，请先安装：{getattr(eng, 'install_hint', '') or eng.name}",
+        )
+    return eng
+
+
+@router.put("/_engine", response_model=dict)
+async def set_global_engine(
+    payload: SetEngineIn,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
+):
+    """Set the app-wide DEFAULT runtime engine.
+
+    This is the baseline every agent follows unless it has its own override
+    (`agent.engine_kind`). It does NOT overwrite per-agent overrides — agents
+    with `engine_kind = NULL` follow this default; agents pinned to a specific
+    engine keep their pin. Persisted to SystemSetting so it survives restart.
+    Empty string / null → no explicit default (fall back to provider inference).
+    """
+    from ...db.models import SystemSetting
+    from ...runtime import engines as _engines
+
+    kind = (payload.engine_kind or "").strip()
+    if kind:
+        _validate_engine_or_400(kind)
+
+    row = (await db.execute(
+        select(SystemSetting).where(SystemSetting.key == _ENGINE_SETTING_KEY)
+    )).scalar_one_or_none()
+    if row is None:
+        row = SystemSetting(key=_ENGINE_SETTING_KEY, value_json={"engine": kind})
+        db.add(row)
+    else:
+        row.value_json = {**(row.value_json or {}), "engine": kind}
+    _engines.set_global_default(kind or None)
+
+    await audit(db, actor.id, "engine.set_global", target_type="system", target_id=None)
+    await db.commit()
+    return {"ok": True, "engine": kind or ""}
+
+
+@router.patch("/{aid}/engine", response_model=AgentOut)
+async def set_agent_engine(
+    aid: int,
+    payload: SetEngineIn,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
+):
+    """Override (or clear) the runtime engine for a SINGLE agent.
+
+    Empty string / null clears the override so the agent follows the global
+    default again. A non-empty value pins this agent to that engine regardless
+    of the default.
+    """
+    a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "不存在")
+    kind = (payload.engine_kind or "").strip()
+    if kind:
+        _validate_engine_or_400(kind)
+    a.engine_kind = kind or None
+    await audit(db, actor.id, "agent.set_engine", target_type="agent", target_id=a.id)
+    await db.commit(); await db.refresh(a)
+    return await _to_out(db, a)
+
+
+@router.patch("/_engine/bulk", response_model=dict)
+async def bulk_set_agent_engine(
+    payload: SetEngineIn,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
+):
+    """Apply one per-agent engine choice to ALL agents in one click.
+
+    - Empty string / null → clears every agent's override so they all follow
+      the app-wide default engine again.
+    - A non-empty value → pins every agent to that specific engine.
+
+    This only touches per-agent overrides (`agent.engine_kind`); the app-wide
+    default set via PUT /_engine is unchanged.
+    """
+    kind = (payload.engine_kind or "").strip()
+    if kind:
+        _validate_engine_or_400(kind)
+    await db.execute(update(Agent).values(engine_kind=(kind or None)))
+    await audit(db, actor.id, "agent.bulk_set_engine", target_type="agent", target_id=None)
+    await db.commit()
+    total = len((await db.execute(select(Agent.id))).all())
+    return {"ok": True, "engine": kind or "", "agents_updated": total}
+
+
+@router.post("/_engines/{name}/install", response_model=dict)
+async def install_engine(
+    name: str,
+    actor: User = Depends(require_admin_or_operator),
+):
+    """Auto-install an out-of-process engine's CLI via its declared package
+    manager (npm). Only engines that declare a whitelisted install package can
+    be installed; the package name is validated against the registry entry, so
+    an arbitrary command can never be injected.
+    """
+    import asyncio
+    import shutil
+    from ...runtime import engines as _engines
+
+    eng = _engines.get(name)
+    if eng is None:
+        raise HTTPException(404, f"未知的执行引擎: {name}")
+    if eng.is_available():
+        return {"ok": True, "already": True, "message": f"「{eng.label}」已安装"}
+
+    manager = (getattr(eng, "install_manager", "") or "").strip().lower()
+    package = (getattr(eng, "install_package", "") or "").strip()
+    if manager != "npm" or not package:
+        raise HTTPException(400, f"「{eng.label}」不支持自动安装，请参考安装文档手动安装")
+
+    npm = shutil.which("npm")
+    if not npm:
+        raise HTTPException(
+            400, "本机未找到 npm，请先安装 Node.js（含 npm）后再自动安装引擎")
+
+    # Build argv explicitly (no shell) — package is a registry-declared constant,
+    # never user-supplied free text, so injection is not possible.
+    argv = [npm, "install", "-g", package]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            out_b, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise HTTPException(504, "安装超时（>5 分钟），请检查网络或手动安装")
+    except FileNotFoundError:
+        raise HTTPException(400, "npm 不可用")
+
+    tail = (out_b or b"").decode("utf-8", "replace")[-4000:]
+    ok = proc.returncode == 0 and eng.is_available()
+    if not ok:
+        raise HTTPException(
+            500,
+            f"安装失败（exit={proc.returncode}）。日志尾部：\n{tail[-1500:]}",
+        )
+    return {"ok": True, "installed": True, "engine": name,
+            "message": f"「{eng.label}」安装成功", "log_tail": tail[-1500:]}
 
 
 # ── AI polish: refine description / system_prompt ──────────────────────────

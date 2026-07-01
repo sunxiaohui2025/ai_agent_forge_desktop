@@ -189,6 +189,16 @@ export const api = {
   deleteAgent: (id: number) => http.delete(`/api/admin/agents/${id}`).then((r) => r.data),
   polishAgentText: (p: { kind: 'description' | 'system_prompt'; text: string; agent_name?: string; model_id?: number }) =>
     http.post('/api/admin/agents/polish', p).then((r) => r.data),
+  // Runtime engines: list engines, set app-wide default, per-agent override, auto-install.
+  agentEngines: () => http.get('/api/admin/agents/_engines').then((r) => r.data),
+  setGlobalEngine: (engine_kind: string | null) =>
+    http.put('/api/admin/agents/_engine', { engine_kind }).then((r) => r.data),
+  setAgentEngine: (id: number, engine_kind: string | null) =>
+    http.patch(`/api/admin/agents/${id}/engine`, { engine_kind }).then((r) => r.data),
+  bulkSetAgentEngine: (engine_kind: string | null) =>
+    http.patch('/api/admin/agents/_engine/bulk', { engine_kind }).then((r) => r.data),
+  installEngine: (name: string) =>
+    http.post(`/api/admin/agents/_engines/${encodeURIComponent(name)}/install`).then((r) => r.data),
 
   callLogs: (params: { limit?: number; offset?: number; user_id?: number; agent_id?: number } = {}) =>
     http.get('/api/admin/logs/calls', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
