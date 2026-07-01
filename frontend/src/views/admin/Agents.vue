@@ -146,8 +146,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="任务轮次上限">
-          <el-input-number v-model="form.max_turns" :min="1" :max="100" :step="1" controls-position="right" />
-          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 专家一次任务中允许的工具调用循环上限,默认 15</span>
+          <el-input-number v-model="form.max_turns" :min="30" :step="1" controls-position="right" placeholder="留空 = 不限制" />
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 专家一次任务中允许的工具调用循环上限。留空表示不限制（默认）；如需设置，最少 30 轮，无上限</span>
         </el-form-item>
         <el-form-item label="思考深度">
           <el-select v-model="form.effort" style="width:220px">
@@ -314,7 +314,7 @@ function emptyForm() {
   return {
     code: '', name: '', description: '', icon: '', system_prompt: '',
     default_model_id: null, fallback_model_id: null,
-    upload_policy_json: {}, max_turns: 50, effort: 'medium',
+    upload_policy_json: {}, max_turns: null, effort: 'medium',
     parsed_content_limit: null, work_dir: '',
     enabled: true, is_default: false,
     skill_ids: [], mcp_ids: [], pack_ids: [], role_ids: [], cli_app_ids: [],
@@ -358,6 +358,10 @@ async function onIconPick(uploadFile: any) {
 function openCreate() {
   editing.value = null
   Object.assign(form, emptyForm())
+  // 首选/备用模型默认从模型管理读取第一个填充；没有则留空。
+  const firstModelId = models.value?.[0]?.id ?? null
+  form.default_model_id = firstModelId
+  form.fallback_model_id = firstModelId
   extText.value = ''
   maxSizeMb.value = 5
   maxFilesPerSend.value = 5
@@ -392,7 +396,6 @@ function summon(row: any) {
 function openEdit(row: any) {
   editing.value = row
   Object.assign(form, emptyForm(), JSON.parse(JSON.stringify(row)))
-  if (form.max_turns == null) form.max_turns = 100
   if (!form.effort) form.effort = 'medium'
   const policy = row.upload_policy_json || {}
   extText.value = (policy.allowed_ext || []).join(',')

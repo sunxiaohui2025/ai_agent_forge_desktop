@@ -12,7 +12,7 @@ describing what they want in natural language. The LLM drives a two-step flow:
      Persist a new Agent from the structured fields the model assembled (after
      the user confirmed the proposed capabilities). Codes/keys are resolved to
      DB ids server-side, a unique `code` is generated when missing, and sane
-     defaults are applied (max_turns=100, enabled=True, is_default=False, empty
+     defaults are applied (max_turns=None 表示不限制轮次, enabled=True, is_default=False, empty
      work_dir).
 
 Registered as an `atomic.callable` Skill (source_json.callable =
@@ -134,11 +134,15 @@ async def _create(payload: dict[str, Any]) -> dict[str, Any]:
     icon = str(payload.get("icon") or "").strip() or None
     work_dir = str(payload.get("work_dir") or "").strip() or None
 
-    try:
-        max_turns = int(payload.get("max_turns") or 100)
-    except (TypeError, ValueError):
-        max_turns = 100
-    max_turns = max(1, min(100, max_turns))
+    # max_turns: None/缺省 = 不限制轮次；若设置则最少 30 轮,无上限。
+    raw_mt = payload.get("max_turns")
+    if raw_mt in (None, "", 0, "0"):
+        max_turns = None
+    else:
+        try:
+            max_turns = max(30, int(raw_mt))
+        except (TypeError, ValueError):
+            max_turns = None
 
     skill_codes = _norm_list(payload.get("skill_codes") or payload.get("skills"))[:MAX_SKILLS]
     mcp_names = _norm_list(payload.get("connector_names") or payload.get("connectors"))[:MAX_MCPS]

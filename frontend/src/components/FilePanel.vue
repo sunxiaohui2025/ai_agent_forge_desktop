@@ -161,7 +161,7 @@ function openInFinder() {
 
 <style scoped>
 .file-panel {
-  width: 320px; flex-shrink: 0;
+  width: 280px; flex-shrink: 0;
   display: flex; flex-direction: column;
   background: var(--m-surface-glass, rgba(250,250,247,.78));
   backdrop-filter: blur(20px) saturate(1.14);

@@ -2449,7 +2449,9 @@ class AgentRunner:
                 _ingest_tool_list(m, tools_list)
 
         # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
-        MAX_ITER = max(1, int(getattr(self.ctx.agent, "max_turns", 15) or 15))
+        # max_turns is None → 不限制轮次；用一个很大的安全上限兜底,防止真正死循环。
+        _mt = getattr(self.ctx.agent, "max_turns", None)
+        MAX_ITER = max(1, int(_mt)) if _mt else 100_000
         # Effort → reasoning_effort (OpenAI / DeepSeek / Qwen reasoning models honor
         # this; ignored by providers that don't). xhigh/max fall back to "high"
         # for OpenAI compat since only low/medium/high are universally accepted.
@@ -2973,9 +2975,12 @@ class AgentRunner:
             "include_partial_messages": True,
             "permission_mode": permission_mode,
             "allowed_tools": allowed_tools,
-            "max_turns": max(1, int(getattr(self.ctx.agent, "max_turns", 15) or 15)),
             "disallowed_tools": disallowed_tools,
         }
+        # max_turns is None → 不限制轮次,不向 SDK 传该参数（使用 SDK 默认/无限）。
+        _mt = getattr(self.ctx.agent, "max_turns", None)
+        if _mt:
+            options_kwargs["max_turns"] = max(1, int(_mt))
         if mcp_servers:
             options_kwargs["mcp_servers"] = mcp_servers
         # Interactive approval: when the mode is ask/auto, register a can_use_tool

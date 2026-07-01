@@ -147,7 +147,8 @@ class Agent(Base, TimestampMixin):
     default_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     fallback_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    max_turns: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
+    # None = 不限制任务轮次（默认）。若设置，最少 30 轮，无上限。
+    max_turns: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     effort: Mapped[str] = mapped_column(String(16), default="low", server_default="low")
     # File-parsing length cap fed into the model:
     #   None → use settings.PARSED_MARKDOWN_HARD_LIMIT

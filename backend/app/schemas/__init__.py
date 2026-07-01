@@ -273,7 +273,8 @@ class AgentIn(BaseModel):
     default_model_id: int | None = None
     fallback_model_id: int | None = None
     upload_policy_json: dict[str, Any] = Field(default_factory=dict)
-    max_turns: int = Field(default=15, ge=1, le=100)
+    # None = 不限制轮次（默认）。若设置，则最少 30 轮，无上限。
+    max_turns: int | None = Field(default=None, ge=30)
     effort: EffortLevel = "medium"
     parsed_content_limit: int | None = Field(default=None, ge=0, le=2_000_000)
     work_dir: str | None = None
@@ -296,7 +297,7 @@ class AgentOut(ORM):
     default_model_id: int | None
     fallback_model_id: int | None
     upload_policy_json: dict[str, Any]
-    max_turns: int = 15
+    max_turns: int | None = None
     effort: EffortLevel = "medium"
     parsed_content_limit: int | None = None
     work_dir: str | None = None

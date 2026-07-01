@@ -874,13 +874,13 @@ watch(cmdIndex, async () => {
 //   { key: 'cmd:memory',   name: 'memory',          desc: '编辑项目记忆文件',          action: 'insert', icon: IcoMemory, insert: '请打开并编辑项目记忆文件 CLAUDE.md：' },
 // ]
 const BUILTIN_COMMANDS = [
-  { key: 'cmd:help',     name: 'help',            desc: '显示可用命令和提示',        action: 'builtin', icon: IcoHelp },
-  { key: 'cmd:clear',    name: 'clear',           desc: '清除对话历史',              action: 'builtin', icon: IcoClear },
-  { key: 'cmd:cost',     name: 'cost',            desc: '显示 Token 用量统计',       action: 'builtin', icon: IcoCost },
-  { key: 'cmd:compact',  name: 'compact',         desc: '压缩对话上下文',            action: 'builtin', icon: IcoCompact },
-  { key: 'cmd:doctor',   name: 'doctor',          desc: '诊断项目健康状况',          action: 'insert', icon: IcoDoctor, insert: '请诊断当前项目的健康状况（依赖、配置、潜在问题）：' },
-  { key: 'cmd:memory',   name: 'memory',          desc: '编辑项目记忆文件',          action: 'insert', icon: IcoMemory, insert: '请打开并编辑项目记忆文件 CLAUDE.md：' },
-  { key: 'cmd:health',   name: 'health-check',    desc: '系统健康检查（模型 / 专家）', action: 'builtin', icon: IcoDoctor },
+  { key: 'cmd:help',     name: '帮助',            desc: '显示可用命令和提示',        action: 'builtin', icon: IcoHelp },
+  { key: 'cmd:clear',    name: '清除',           desc: '清除对话历史',              action: 'builtin', icon: IcoClear },
+  { key: 'cmd:cost',     name: '用量',            desc: '显示 Token 用量统计',       action: 'builtin', icon: IcoCost },
+  { key: 'cmd:compact',  name: '压缩',         desc: '压缩对话上下文',            action: 'builtin', icon: IcoCompact },
+  { key: 'cmd:doctor',   name: '健康检查',          desc: '诊断项目健康状况',          action: 'insert', icon: IcoDoctor, insert: '请诊断当前项目的健康状况（依赖、配置、潜在问题）：' },
+  { key: 'cmd:memory',   name: '记忆',          desc: '编辑项目记忆文件',          action: 'insert', icon: IcoMemory, insert: '请打开并编辑项目记忆文件 CLAUDE.md：' },
+  { key: 'cmd:health',   name: '健康检查',    desc: '系统健康检查（模型 / 专家）', action: 'builtin', icon: IcoDoctor },
 ]
 const allCommandItems = computed(() => {
   const items: any[] = []
@@ -889,7 +889,7 @@ const allCommandItems = computed(() => {
   for (const c of BUILTIN_COMMANDS) items.push({ ...c, kind: 'command' })
   // ── Expert Skills ──
   if (skillCatalog.value.length) {
-    items.push({ key: 'g:skill', groupHead: '专家技能' })
+    items.push({ key: 'g:skill', groupHead: '技能' })
     for (const sk of skillCatalog.value) {
       items.push({
         key: 'skill:' + sk.id,
@@ -935,14 +935,13 @@ function nextSelectable(from: number, dir: 1 | -1): number {
   return from
 }
 
-// Skill catalog for the current agent (loaded lazily).
+// Skill catalog for the "/" palette. Loads ALL installed & enabled skills
+// (not just the current expert's) so users can invoke any installed skill.
 const skillCatalog = ref<any[]>([])
 async function loadSkillCatalog() {
-  const agent = chat.currentAgent
-  if (!agent?.id) { skillCatalog.value = []; return }
   try {
-    const caps = await api.agentCapabilities(agent.id)
-    skillCatalog.value = caps?.skills || []
+    const all = await api.skills()
+    skillCatalog.value = (all || []).filter((s: any) => s.enabled !== false)
   } catch { skillCatalog.value = [] }
 }
 
@@ -2014,7 +2013,7 @@ function permHeadText(req: any): string {
 
 /* Conv main */
 .conv { flex: 1; display: flex; flex-direction: column; min-width: 0; background: transparent; position: relative; }
-.messages { flex: 1; overflow: auto; padding: 24px 0 16px; scroll-behavior: smooth; }
+.messages { flex: 1; overflow: auto; padding: 24px 35px 16px 30px; scroll-behavior: smooth; }
 
 .welcome {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2677,7 +2676,7 @@ function permHeadText(req: any): string {
 
 /* Composer */
 .composer-wrap {
-  padding: 10px 28px 22px;
+  padding: 10px 33px 20px 25px;
   max-width: 910px;
   width: 100%;
   margin: 0 auto;

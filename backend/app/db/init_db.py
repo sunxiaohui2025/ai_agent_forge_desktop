@@ -29,6 +29,13 @@ async def main():
         await conn.exec_driver_sql(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_turns INTEGER NOT NULL DEFAULT 15"
         )
+        # max_turns: NULL = 不限制轮次（默认）。放开旧约束。
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ALTER COLUMN max_turns DROP NOT NULL"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE agents ALTER COLUMN max_turns DROP DEFAULT"
+        )
         await conn.exec_driver_sql(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS effort VARCHAR(16) NOT NULL DEFAULT 'medium'"
         )

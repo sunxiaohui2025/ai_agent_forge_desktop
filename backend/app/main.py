@@ -50,6 +50,28 @@ async def _auto_migrate() -> None:
                     )
             except Exception:
                 pass
+            # max_turns: NULL = 不限制轮次（默认）。旧库该列是 NOT NULL DEFAULT 15，
+            # SQLite 无法直接 DROP NOT NULL，需按「新增可空列→拷贝→删旧列→改名」重建。
+            try:
+                mt = next(
+                    (r for r in (await conn.exec_driver_sql("PRAGMA table_info(agents)")).all()
+                     if r[1] == "max_turns"),
+                    None,
+                )
+                # r[3] == notnull 标志；为真说明还是旧的 NOT NULL 约束
+                if mt is not None and mt[3]:
+                    await conn.exec_driver_sql(
+                        "ALTER TABLE agents ADD COLUMN max_turns_tmp INTEGER"
+                    )
+                    await conn.exec_driver_sql(
+                        "UPDATE agents SET max_turns_tmp = max_turns"
+                    )
+                    await conn.exec_driver_sql("ALTER TABLE agents DROP COLUMN max_turns")
+                    await conn.exec_driver_sql(
+                        "ALTER TABLE agents RENAME COLUMN max_turns_tmp TO max_turns"
+                    )
+            except Exception:
+                pass
             # call_logs.cache_hit_tokens
             try:
                 call_cols = {
@@ -68,6 +90,9 @@ async def _auto_migrate() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
             # agents: max_turns / effort (Claude SDK tuning — added in an earlier change)
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_turns INTEGER NOT NULL DEFAULT 15",
+            # max_turns: NULL = 不限制轮次（默认）。放开 NOT NULL/默认值约束。
+            "ALTER TABLE agents ALTER COLUMN max_turns DROP NOT NULL",
+            "ALTER TABLE agents ALTER COLUMN max_turns DROP DEFAULT",
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS effort VARCHAR(16) NOT NULL DEFAULT 'medium'",
             "ALTER TABLE agents ALTER COLUMN icon TYPE TEXT",
             # capability summary (Skill / MCP) — auto-generated, user-friendly Chinese description
@@ -402,7 +427,7 @@ _CREATE_EXPERT_DESCRIPTION = (
     "skill_codes(数组,来自 skills.code)、connector_names(数组,来自 connectors.name)、"
     "cli_app_keys(数组,来自 cli_apps.app_key)。"
     "编码 code 可不传(系统自动生成)，图标 icon 可不传，工作目录 work_dir 默认空，"
-    "max_turns 默认 100。创建成功后会返回新专家信息，请告知用户去「专家管理」查看。"
+    "max_turns 默认不传(留空表示不限制轮次;如需设置最少 30)。创建成功后会返回新专家信息，请告知用户去「专家管理」查看。"
 )
 
 _CREATE_TASK_DESCRIPTION = (
@@ -610,7 +635,7 @@ async def _seed_builtin_agents() -> None:
                 default_model_id=default_mid,
                 fallback_model_id=fallback_mid or default_mid,
                 upload_policy_json=spec.get("upload_policy_json") or {},
-                max_turns=spec.get("max_turns") or 15,
+                max_turns=spec.get("max_turns"),
                 effort=spec.get("effort") or "low",
                 parsed_content_limit=spec.get("parsed_content_limit"),
                 work_dir=spec.get("work_dir"),
