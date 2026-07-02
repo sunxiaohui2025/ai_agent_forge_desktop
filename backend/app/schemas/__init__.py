@@ -305,6 +305,12 @@ class AgentOut(ORM):
     parsed_content_limit: int | None = None
     work_dir: str | None = None
     engine_kind: str | None = None
+    # Derived (read-only): the effective engine after resolving default/provider,
+    # and whether that engine manages its own model (CLI-mounted). When
+    # `engine_self_managed_model` is True the UI hides model selection for this
+    # agent — the model belongs to the CLI, not the app config.
+    effective_engine: str | None = None
+    engine_self_managed_model: bool = False
     enabled: bool
     is_default: bool = False
     skill_ids: list[int] = []
@@ -312,6 +318,26 @@ class AgentOut(ORM):
     pack_ids: list[int] = []
     role_ids: list[int] = []
     cli_app_ids: list[int] = []
+
+
+def enrich_agent_engine(out: "AgentOut", *, provider: str | None = None) -> "AgentOut":
+    """Fill the derived engine fields on an AgentOut.
+
+    Resolves the effective engine for the agent (per-agent override → global
+    default → provider inference) and records whether that engine manages its
+    own model. Best-effort: any failure leaves the safe defaults in place.
+    """
+    try:
+        from ..runtime import engines as _engines
+        eng = _engines.resolve_engine_for_agent(out.engine_kind, provider)
+        if eng is not None:
+            out.effective_engine = eng.name
+            out.engine_self_managed_model = bool(
+                getattr(eng.capabilities, "self_managed_model", False)
+            )
+    except Exception:
+        pass
+    return out
 
 
 # ---------- Conversation / Message ----------

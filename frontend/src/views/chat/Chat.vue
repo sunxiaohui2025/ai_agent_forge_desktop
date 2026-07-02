@@ -38,7 +38,7 @@
               <div v-if="m.role === 'assistant' && m._meta && m.content_json?.text" class="msg-meta">
                 <span>{{ m._meta.agent_name }}</span>
                 <span class="dot-sep">·</span>
-                <code>{{ m._meta.model_id }}</code>
+                <!-- <code>{{ m._meta.model_id }}</code> -->
                 <button
                   v-if="chat.currentAgent"
                   class="cap-info-btn cap-info-btn-sm"
@@ -393,7 +393,7 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-                <el-dropdown trigger="click" @command="onPickModel">
+                <el-dropdown v-if="!engineSelfManaged" trigger="click" @command="onPickModel">
                   <button class="tool-chip model-chip"><el-icon :size="14"><Cpu /></el-icon> {{ selectedModelLabel }}</button>
                   <template #dropdown>
                     <el-dropdown-menu>
@@ -409,6 +409,9 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
+                <span v-else class="tool-chip model-chip is-cli" :title="engineSelfManagedTip">
+                  <el-icon :size="14"><Cpu /></el-icon> {{ effectiveEngineLabel }}
+                </span>
                 <el-popover v-model:visible="skillsPopoverOpen" placement="top-start" :width="336" trigger="click"
                             popper-class="apps-popover">
                   <template #reference>
@@ -766,6 +769,21 @@ const autoDefaultName = computed(() => {
   const m = models.value.find((x) => x.enabled !== false) || models.value[0]
   return m ? (m.code || m.model_id) : ''
 })
+
+// When the current expert's engine manages its own model (local Claude/Codex
+// CLI), the app-configured model is irrelevant — hide the model selector and
+// show the engine name instead.
+const engineSelfManaged = computed(() => !!chat.currentAgent?.engine_self_managed_model)
+const ENGINE_LABELS: Record<string, string> = {
+  'claude-code-cli': 'Claude Code CLI',
+  'codex-cli': 'Codex CLI',
+}
+const effectiveEngineLabel = computed(() => {
+  const e = chat.currentAgent?.effective_engine || ''
+  return ENGINE_LABELS[e] || e || '命令行引擎'
+})
+const engineSelfManagedTip = computed(() =>
+  `该专家使用「${effectiveEngineLabel.value}」，模型由本机 CLI 挂载，无法在应用内切换`)
 
 async function loadModels() {
   if (models.value.length) return
@@ -1174,6 +1192,11 @@ async function scrollToMessage(messageId: number) {
 onMounted(async () => {
   document.addEventListener('pointerdown', onDocumentPointerDown, true)
   if (!chat.loaded) await chat.loadInit()
+  // Even if the store was already loaded, refresh agents so engine-derived
+  // fields (effective_engine / engine_self_managed_model, which drive the model
+  // selector vs. CLI-engine chip) reflect any change made in the admin 执行引擎
+  // page during this session. Best-effort; never blocks the view.
+  else chat.reloadAgents().catch(() => {})
   loadModels()
   // Deep-link: /chat?conv=N opens an existing conversation (e.g. from a task run).
   const convQuery = route.query.conv
@@ -2467,7 +2490,7 @@ function permHeadText(req: any): string {
 
 .msg-meta {
   display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--m-text-secondary);
+  font-size: 13px; color: var(--m-text-secondary);
   padding: 0 4px;
 }
 .msg-meta code { background: var(--m-surface-variant); padding: 1px 6px; border-radius: 4px; font-family: 'Roboto Mono', monospace; }
@@ -2909,6 +2932,14 @@ function permHeadText(req: any): string {
   max-width: 230px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.model-chip.is-cli {
+  cursor: default;
+  opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 .agent-chip {
   max-width: 200px;

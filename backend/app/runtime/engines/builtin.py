@@ -97,7 +97,7 @@ def build_builtin_engines() -> list[_BaseEngine]:
         ),
         OpenAICompatEngine(
             name="openai-compat",
-            label="OpenAI 兼容循环（内置）",
+            label="AgentForge自带内核（内置）",
             capabilities=EngineCapabilities(
                 native_skills=False,   # emulated via function-calling bridge
                 native_mcp=False,      # tools proxied in-process

@@ -22,15 +22,26 @@
         <el-radio :value="e.name" :disabled="!e.available" class="eng-radio">
           <span class="sr-only">{{ e.label }}</span>
         </el-radio>
+        <div :class="['eng-icon', engineIconTone(e)]">
+          <img :src="engineIcon(e)" alt="" />
+        </div>
         <div class="eng-body">
           <div class="eng-line1">
             <span class="eng-label">{{ e.label }}</span>
+            <span v-if="selected === e.name" class="eng-check">已选择</span>
+          </div>
+          <div class="eng-line2">
             <el-tag :type="e.available ? 'success' : 'info'" size="small" effect="light">
               {{ e.available ? '可用' : (e.out_of_process ? '未安装' : '不可用') }}
             </el-tag>
             <el-tag v-if="e.name === current" type="warning" size="small" effect="light">默认</el-tag>
+            <el-tag v-if="e.self_managed_model" type="danger" size="small" effect="plain">自带模型</el-tag>
           </div>
           <div class="eng-name mono">{{ e.name }}</div>
+          <div v-if="e.self_managed_model" class="eng-selfmodel">
+            ⚠ 该引擎使用本机 CLI 挂载的模型/账号，<b>不使用应用内配置的模型</b>。
+            选择它的专家在对话时不显示模型选择，也无需在专家里配置模型。
+          </div>
           <div v-if="e.capabilities?.notes" class="eng-notes">{{ e.capabilities.notes }}</div>
           <div class="eng-caps">
             <span v-for="c in capsOf(e)" :key="c.key" :class="['cap', c.on ? 'on' : 'off']">
@@ -88,7 +99,7 @@
           :label="e.label" :value="e.name" :disabled="!e.available"
         />
       </el-select>
-      <el-button type="primary" plain :loading="bulkSaving" @click="applyBulk">
+      <el-button class="bulk-apply-btn" :loading="bulkSaving" @click="applyBulk">
         应用到全部智能体
       </el-button>
     </div>
@@ -134,7 +145,7 @@ interface EngineCaps {
 interface EngineItem {
   name: string; label: string; available: boolean; out_of_process?: boolean
   required_binary?: string; install_hint?: string; install_url?: string
-  install_manager?: string; can_auto_install?: boolean
+  install_manager?: string; can_auto_install?: boolean; self_managed_model?: boolean
   capabilities: EngineCaps
 }
 interface AgentRow {
@@ -164,6 +175,18 @@ const CAP_DEFS: { key: keyof EngineCaps; label: string }[] = [
 function capsOf(e: EngineItem) {
   const c = e.capabilities || {}
   return CAP_DEFS.map((d) => ({ key: d.key, label: d.label, on: !!c[d.key] }))
+}
+function engineIcon(e: EngineItem) {
+  if (e.name === 'openai-compat') return '/icon.svg'
+  if (e.name === 'codex-cli') return '/engine-logos/openai.svg'
+  if (e.name.includes('claude')) return '/engine-logos/claude.svg'
+  return '/icon.svg'
+}
+function engineIconTone(e: EngineItem) {
+  if (e.name === 'openai-compat') return 'forge'
+  if (e.name === 'codex-cli') return 'openai'
+  if (e.name.includes('claude')) return 'claude'
+  return 'forge'
 }
 
 function labelOf(name: string): string {
@@ -223,6 +246,7 @@ async function applyDefault() {
     // 2) one-click apply to ALL agents (clear per-agent overrides → follow default)
     await api.bulkSetAgentEngine(null)
     agents.value.forEach((a) => { a.engine_kind = null })
+    bulkChoice.value = ''
     ElMessage.success(`默认执行引擎已设为「${currentLabel.value}」，全部智能体已切换为跟随默认`)
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '设置失败')
@@ -310,22 +334,89 @@ onMounted(load)
   gap: 14px; width: 100%;
 }
 .eng-item {
-  display: flex; align-items: flex-start; gap: 12px; margin: 0;
-  border: 1px solid #eeeeeb; border-radius: 16px; background: #fff;
-  padding: 16px 18px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+  position: relative;
+  display: flex; align-items: flex-start; gap: 14px; margin: 0;
+  min-height: 190px;
+  border: 1px solid #ece9df; border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,248,244,.92)),
+    #fff;
+  padding: 18px; cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease;
+  overflow: hidden;
 }
-.eng-item:hover { border-color: #ddddd8; }
-.eng-item.active { border-color: var(--m-primary); box-shadow: 0 0 0 1px var(--m-primary) inset; }
-.eng-item.disabled { cursor: not-allowed; background: #fafaf8; }
-.eng-radio { margin-top: 1px; height: 20px; }
+.eng-item::after {
+  content: "";
+  position: absolute;
+  right: -70px; top: -82px;
+  width: 190px; height: 190px;
+  border-radius: 999px;
+  background: rgba(201, 100, 66, .08);
+  pointer-events: none;
+}
+.eng-item:hover { border-color: #ded8cc; box-shadow: 0 18px 42px -34px rgba(44,38,32,.36); transform: translateY(-1px); }
+.eng-item.active {
+  border-color: rgba(201, 100, 66, .72);
+  background:
+    linear-gradient(180deg, rgba(255,252,248,.98), rgba(253,247,242,.96)),
+    #fff;
+  box-shadow: 0 0 0 1px rgba(201, 100, 66, .18) inset, 0 20px 48px -38px rgba(201,100,66,.55);
+}
+.eng-item.disabled { cursor: not-allowed; background: #fafaf8; opacity: .72; }
+.eng-radio {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 2;
+  height: 20px;
+}
 .eng-radio :deep(.el-radio__label) { display: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-.eng-body { flex: 1; min-width: 0; }
-.eng-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.eng-label { font-size: 14px; font-weight: 650; color: #20201e; }
-.eng-name { font-size: 12px; color: #989891; margin-top: 2px; }
+.eng-icon {
+  position: relative;
+  z-index: 1;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.6), 0 12px 26px -22px rgba(0,0,0,.5);
+}
+.eng-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  display: block;
+}
+/* .eng-icon.forge { background: #C96442; } */
+.eng-icon.forge img { width: 38px; height: 38px; }
+.eng-icon.claude { background: #fbefe9; }
+.eng-icon.openai { background: #edf8f4; }
+.eng-body { position: relative; z-index: 1; flex: 1; min-width: 0; padding-right: 18px; }
+.eng-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 24px; }
+.eng-line2 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 7px; }
+.eng-label { font-size: 15px; font-weight: 760; color: #20201e; line-height: 1.25; }
+.eng-check {
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fff0e9;
+  color: #bd5b3b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.eng-name { font-size: 12px; color: #989891; margin-top: 6px; }
 .eng-notes { color: #8a8a84; font-size: 12px; line-height: 1.55; margin: 8px 0 0; }
+.eng-selfmodel {
+  margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+  background: #fdf2f2; color: #a5443a; font-size: 12px; line-height: 1.5;
+}
+.eng-selfmodel b { color: #8a2f27; font-weight: 700; }
 .eng-caps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .cap { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
 .cap.on { background: #eaf5ee; color: #2c8a52; }
@@ -367,6 +458,18 @@ onMounted(load)
   border: 1px solid #eeeeeb; border-radius: 14px; background: #fbfaf9;
 }
 .bulk-label { font-size: 13px; color: #676761; font-weight: 600; }
+.bulk-apply-btn {
+  border: 1px solid #e6dfd4;
+  background: #fff8f4;
+  color: #9f4d33;
+  font-weight: 650;
+}
+.bulk-apply-btn:hover,
+.bulk-apply-btn:focus {
+  border-color: #d9c8ba;
+  background: #fff1e9;
+  color: #8f3f28;
+}
 .set-rows { border: 1px solid #eeeeeb; border-radius: 16px; background: #fff; overflow: hidden; }
 .set-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -383,5 +486,3 @@ onMounted(load)
   .eng-grid { grid-template-columns: 1fr; }
 }
 </style>
-
-

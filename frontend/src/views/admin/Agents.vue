@@ -136,9 +136,13 @@
           </div>
         </el-form-item>
         <el-form-item label="首选模型">
-          <el-select v-model="form.default_model_id" clearable>
+          <el-select v-model="form.default_model_id" clearable placeholder="可留空">
             <el-option v-for="m in models" :key="m.id" :label="m.code" :value="m.id" />
           </el-select>
+          <div class="field-hint">
+            可留空。若该专家使用 <b>Claude Code CLI / Codex CLI</b> 执行引擎，模型由本机 CLI 挂载，无需在此选择。
+            使用内置引擎时留空则用系统默认模型。
+          </div>
         </el-form-item>
         <el-form-item label="备用模型">
           <el-select v-model="form.fallback_model_id" clearable>
@@ -426,6 +430,8 @@ async function onDelete(row: any) {
 
 <style scoped>
 .muted { color: var(--m-text-tertiary); }
+.field-hint { font-size: 12px; color: var(--m-text-tertiary); line-height: 1.5; margin-top: 4px; }
+.field-hint b { color: var(--m-text-secondary, #676761); font-weight: 600; }
 
 .workdir-row { display: flex; gap: 8px; width: 100%; }
 .workdir-row .el-input { flex: 1; }

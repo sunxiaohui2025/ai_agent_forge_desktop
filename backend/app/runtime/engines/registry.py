@@ -97,6 +97,24 @@ def resolve_name(ctx: "AgentContext") -> str:
     return _FALLBACK_ENGINE
 
 
+def resolve_engine_for_agent(engine_kind: str | None, provider: str | None = None) -> RuntimeEngine | None:
+    """Resolve the effective engine from an agent's engine_kind (+ optional model
+    provider), WITHOUT a full AgentContext. Used to compute display-only fields
+    like `self_managed_model` for AgentOut. Mirrors resolve_name's priority.
+
+    Returns the engine instance, or None if nothing resolves.
+    """
+    kind = (engine_kind or "").strip().lower()
+    if kind and kind in _ENGINES:
+        return _ENGINES[kind]
+    if _GLOBAL_DEFAULT and _GLOBAL_DEFAULT in _ENGINES:
+        return _ENGINES[_GLOBAL_DEFAULT]
+    prov = (provider or "").strip().lower()
+    if prov in _PROVIDER_DEFAULT_ENGINE:
+        return _ENGINES.get(_PROVIDER_DEFAULT_ENGINE[prov])
+    return _ENGINES.get(_FALLBACK_ENGINE)
+
+
 def select(ctx: "AgentContext") -> RuntimeEngine:
     """Return the engine that should execute this context.
 

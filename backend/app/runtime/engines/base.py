@@ -51,6 +51,11 @@ class EngineCapabilities:
     workspace_fs: bool = False
     # Runs as an out-of-process CLI (subprocess) rather than in-process.
     out_of_process: bool = False
+    # The engine uses its OWN pre-configured model (e.g. the local `claude` /
+    # `codex` CLI's mounted account/model). When True, the app does NOT pass the
+    # agent's model/api_key to it — the model choice belongs to the CLI, so the
+    # UI hides model selection for agents on this engine.
+    self_managed_model: bool = False
     # Free-form notes for operators / UIs.
     notes: str = ""
 

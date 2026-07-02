@@ -12,9 +12,19 @@ from ..db.models import (
 from ..deps import current_user
 from ..schemas import (
     AgentOut, ConversationOut, ConversationCreate, ConversationUpdate,
-    MessageOut, ChatIn, PermissionDecisionIn,
+    MessageOut, ChatIn, PermissionDecisionIn, enrich_agent_engine,
 )
 from ..runtime.agent_runner import AgentRunner, AgentContext
+
+
+async def _enrich_engine(db: AsyncSession, agent: Agent, out: AgentOut) -> AgentOut:
+    """Populate derived engine fields on a user-facing AgentOut."""
+    provider = None
+    if agent.default_model_id:
+        provider = (await db.execute(
+            select(Model.provider).where(Model.id == agent.default_model_id)
+        )).scalar_one_or_none()
+    return enrich_agent_engine(out, provider=provider)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -81,6 +91,7 @@ async def my_default_agent(user: User = Depends(current_user), db: AsyncSession 
     mcp_ids = [r[0] for r in (await db.execute(select(AgentMCP.mcp_id).where(AgentMCP.agent_id == agent.id))).all()]
     out = AgentOut.model_validate(agent, from_attributes=True)
     out.skill_ids = skill_ids; out.mcp_ids = mcp_ids
+    await _enrich_engine(db, agent, out)
     return out
 
 
@@ -227,6 +238,7 @@ async def my_agents(user: User = Depends(current_user), db: AsyncSession = Depen
         mcp_ids = [r[0] for r in (await db.execute(select(AgentMCP.mcp_id).where(AgentMCP.agent_id == a.id))).all()]
         v = AgentOut.model_validate(a, from_attributes=True)
         v.skill_ids = skill_ids; v.mcp_ids = mcp_ids
+        await _enrich_engine(db, a, v)
         out.append(v)
     return out
 

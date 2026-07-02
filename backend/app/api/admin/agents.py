@@ -25,6 +25,14 @@ async def _to_out(db: AsyncSession, a: Agent) -> AgentOut:
     out.pack_ids = pack_ids
     out.role_ids = role_ids
     out.cli_app_ids = cli_app_ids
+    # Derived engine fields (effective engine + whether it self-manages the model)
+    provider = None
+    if a.default_model_id:
+        provider = (await db.execute(
+            select(Model.provider).where(Model.id == a.default_model_id)
+        )).scalar_one_or_none()
+    from ...schemas import enrich_agent_engine
+    enrich_agent_engine(out, provider=provider)
     return out
 
 
@@ -80,6 +88,7 @@ async def list_engines(db: AsyncSession = Depends(get_db), _=Depends(require_adm
             "install_manager": manager,
             "can_auto_install": bool(manager == "npm" and package),
             "out_of_process": c.out_of_process,
+            "self_managed_model": c.self_managed_model,
             "capabilities": {
                 "native_skills": c.native_skills,
                 "native_mcp": c.native_mcp,
@@ -87,6 +96,7 @@ async def list_engines(db: AsyncSession = Depends(get_db), _=Depends(require_adm
                 "thinking_budget": c.thinking_budget,
                 "workspace_fs": c.workspace_fs,
                 "out_of_process": c.out_of_process,
+                "self_managed_model": c.self_managed_model,
                 "notes": c.notes,
             },
         })
