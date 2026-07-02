@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the H3C Agent backend sidecar.
+# PyInstaller spec for the Agent Forge backend sidecar.
 # Build:  pyinstaller sidecar.spec --noconfirm
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 

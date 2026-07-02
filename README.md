@@ -12,7 +12,7 @@
 |---|---|---|
 | macOS (Apple Silicon) | [Agent.Forge-0.1.0-arm64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-arm64.dmg) | M1/M2/M3 等 ARM 芯片 |
 | macOS (Intel) | [Agent.Forge-0.1.0-x64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-x64.dmg) | Intel 芯片 Mac |
-| Windows (x64) | [H3C Agent-Setup-0.1.0.exe](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/H3C-Agent-Setup-0.1.0.exe) | NSIS 安装向导，支持自定义安装路径 |
+| Windows (x64) | [Agent Forge-Setup-0.1.0.exe](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/H3C-Agent-Setup-0.1.0.exe) | NSIS 安装向导，支持自定义安装路径 |
 
 > macOS 安装包未签名，首次打开请**右键 →「打开」**，或在「系统设置 → 隐私与安全性」中放行。
 > Windows 未签名安装包首次运行可能被 Windows Defender 拦截，点击「更多信息 → 仍要运行」即可。
@@ -376,7 +376,7 @@ cd ../backend && source .venv/bin/activate && pip install pyinstaller && deactiv
 cd ../desktop
 
 npm run dist:mac
-# 产物：desktop/release/H3C Agent-<版本>-arm64.dmg  和  -x64.dmg
+# 产物：desktop/release/Agent Forge-<版本>-arm64.dmg  和  -x64.dmg
 ```
 
 **Windows 打包（必须在 Windows 上执行）**
@@ -392,7 +392,7 @@ deactivate
 cd ..\desktop
 
 npm run dist:win
-# 产物：desktop\release\H3C Agent-Setup-<版本>.exe（NSIS 安装向导）
+# 产物：desktop\release\Agent Forge-Setup-<版本>.exe（NSIS 安装向导）
 ```
 
 打包脚本 `npm run dist:win` 分 4 步自动执行：
@@ -404,7 +404,7 @@ npm run dist:win
 | `prepare:resources` | `node prepare-resources.mjs` | 拷贝产物到 `desktop/resources/` |
 | electron-builder | `electron-builder --win` | 打包 NSIS 安装程序 |
 
-打包完成后双击 `desktop\release\H3C Agent-Setup-<版本>.exe` 即可安装。
+打包完成后双击 `desktop\release\Agent Forge-Setup-<版本>.exe` 即可安装。
 
 > **NSIS 安装器特性**：支持自定义安装路径、桌面快捷方式、开始菜单快捷方式。未签名安装包首次运行可能会被 Windows Defender 拦截，点击「更多信息 → 仍要运行」即可。
 >

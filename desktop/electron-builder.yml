@@ -1,6 +1,6 @@
 appId: com.h3c.agent
-productName: H3C Agent
-copyright: Copyright © 2026
+productName: Agent Forge
+copyright: Copyright © 2026 @扶摇Sun
 
 directories:
   output: release

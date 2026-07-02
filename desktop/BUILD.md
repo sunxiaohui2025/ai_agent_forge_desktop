@@ -31,7 +31,7 @@ npm install
 ```bash
 cd desktop
 npm run dist:mac
-# 产物：desktop/release/H3C Agent-<版本>-arm64.dmg  和  -x64.dmg
+# 产物：desktop/release/Agent Forge-<版本>-arm64.dmg  和  -x64.dmg
 ```
 
 ## 构建 Windows 安装包（必须在 Windows 上执行）
@@ -41,7 +41,7 @@ npm run dist:mac
 # 在 Windows 上，先准备好同样的 backend/.venv（pip install -e . + pyinstaller）
 cd desktop
 npm run dist:win
-# 产物：desktop\release\H3C Agent-Setup-<版本>.exe (NSIS 安装向导)
+# 产物：desktop\release\Agent Forge-Setup-<版本>.exe (NSIS 安装向导)
 ```
 
 ## 分步命令（跨平台）

@@ -10,6 +10,40 @@
       </div>
     </div>
 
+    <!-- Help links -->
+    <div class="about-card help-card">
+      <div>
+        <div class="card-title help-title">帮助与链接</div>
+        <div class="help-subtitle">主要是 GitHub 仓库、反馈入口与发布说明</div>
+      </div>
+      <div class="help-actions">
+        <a class="help-link" href="https://github.com/sunxiaohui2025/ai_agent_forge_desktop" target="_blank" rel="noopener noreferrer">
+          <svg class="help-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 19c-4 1.2-4-2-5.6-2.4" />
+            <path d="M15 22v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.7-1.4 5.7-6.2A4.8 4.8 0 0 0 19 7c.1-.3.6-1.7-.1-3.3 0 0-1-.3-3.4 1.3a11.8 11.8 0 0 0-6.2 0C6.9 3.4 5.9 3.7 5.9 3.7A5 5 0 0 0 5.8 7a4.8 4.8 0 0 0-1.3 3.3c0 4.8 2.9 5.9 5.7 6.2-.4.4-.7.9-.7 1.8V22" />
+          </svg>
+          <span>GitHub 仓库</span>
+        </a>
+        <a class="help-link" href="https://github.com/sunxiaohui2025/ai_agent_forge_desktop/issues" target="_blank" rel="noopener noreferrer">
+          <svg class="help-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.5" />
+            <path d="M12 7.5v5.6" />
+            <path d="M12 16.5h.01" />
+          </svg>
+          <span>反馈入口</span>
+        </a>
+        <a class="help-link" href="https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases" target="_blank" rel="noopener noreferrer">
+          <svg class="help-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 7.5h10" />
+            <path d="M7 12h10" />
+            <path d="M7 16.5h6" />
+            <path d="M4.5 4.5h15v15h-15z" />
+          </svg>
+          <span>发布说明</span>
+        </a>
+      </div>
+    </div>
+
     <!-- Update check -->
     <div class="about-card">
       <div class="about-row">
@@ -196,6 +230,75 @@ onMounted(async () => {
 .about-row { display: flex; align-items: center; justify-content: space-between; }
 .row-title { font-size: 12px; color: var(--m-text-tertiary); }
 .row-val { font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+.help-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(201,100,66,.12), transparent 230px),
+    linear-gradient(180deg, #fff, #fbfaf7);
+}
+.help-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+}
+.help-title { margin-bottom: 4px; color: var(--m-text); }
+.help-subtitle { color: var(--m-text-secondary); font-size: 13px; }
+.help-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(28,28,26,.09);
+  border-radius: 10px;
+  background: rgba(255,255,255,.78);
+  color: var(--m-text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 560;
+  box-shadow: 0 10px 24px -20px rgba(28,28,26,.32);
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.help-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(201,100,66,.28);
+  background: rgba(255,255,255,.96);
+}
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 7px;
+  border: 1px solid rgba(201,100,66,.22);
+  color: #a55136;
+  background: rgba(201,100,66,.08);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .update-result { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--m-border); font-size: 13px; }
 .update-available { display: flex; flex-direction: column; gap: 10px; }
 .update-actions { display: flex; align-items: center; gap: 8px; }
@@ -224,4 +327,9 @@ onMounted(async () => {
 .info-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--m-border); }
 .info-item .k { color: var(--m-text-secondary); }
 .info-item .v { font-weight: 500; }
+
+@media (max-width: 720px) {
+  .help-card { align-items: flex-start; flex-direction: column; }
+  .help-actions { justify-content: flex-start; }
+}
 </style>

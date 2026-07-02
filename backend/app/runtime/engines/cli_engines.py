@@ -113,7 +113,8 @@ class ClaudeCodeCliEngine(_BaseEngine):
         if files:
             prompt += runner._render_attachments(files)
 
-        argv = [binary, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+        argv = [binary, "-p", prompt, "--output-format", "stream-json",
+                "--verbose", "--include-partial-messages"]
         cwd = (runner.ctx.workspace_dir or None)
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -127,6 +128,10 @@ class ClaudeCodeCliEngine(_BaseEngine):
             yield StreamEvent("error", {"message": f"启动 {self.label} 失败: {e}"})
             return
 
+        # Track whether we've seen incremental text_delta chunks. When partial
+        # messages stream in, the CLI ALSO emits a final full `assistant` block
+        # at end-of-turn — we must not replay that (it would duplicate the text).
+        streamed_text = {"seen": False}
         assert proc.stdout is not None
         async for raw in proc.stdout:
             line = raw.decode("utf-8", "replace").strip()
@@ -138,7 +143,7 @@ class ClaudeCodeCliEngine(_BaseEngine):
                 # Non-JSON line → surface as plain assistant text.
                 yield StreamEvent("text", {"text": line})
                 continue
-            async for out in self._translate(evt):
+            async for out in self._translate(evt, streamed_text):
                 yield out
 
         await proc.wait()
@@ -149,16 +154,32 @@ class ClaudeCodeCliEngine(_BaseEngine):
                     "message": f"{self.label} 退出码 {proc.returncode}: {err.strip()[:400]}",
                 })
 
-    async def _translate(self, evt: dict[str, Any]) -> "AsyncIterator[StreamEvent]":
+    async def _translate(
+        self, evt: dict[str, Any], streamed_text: dict[str, bool] | None = None
+    ) -> "AsyncIterator[StreamEvent]":
         """Translate one claude stream-json event into our StreamEvents.
 
-        The claude CLI emits typed events: system(init), assistant(message with
-        content blocks), user(tool_result), result(final + usage). We map the
-        pieces we care about (text, tool_use, tool_result, usage).
+        With --include-partial-messages the CLI emits `stream_event` wrappers
+        carrying Anthropic's native SSE (content_block_delta with a text_delta)
+        — those give us TRUE token-by-token streaming. It still emits a final
+        full `assistant` block at end-of-turn; once we've streamed deltas we
+        skip that block's text to avoid duplication (but still surface tool_use).
+
+        Other typed events: system(init), user(tool_result), result(usage).
         """
         from ..agent_runner import StreamEvent  # local import avoids cycle
 
         etype = evt.get("type")
+        if etype == "stream_event":
+            # Anthropic native streaming event nested under `event`.
+            inner = evt.get("event") or {}
+            if inner.get("type") == "content_block_delta":
+                delta = inner.get("delta") or {}
+                if delta.get("type") == "text_delta" and delta.get("text"):
+                    if streamed_text is not None:
+                        streamed_text["seen"] = True
+                    yield StreamEvent("text", {"text": delta["text"]})
+            return
         if etype == "assistant":
             msg = evt.get("message") or {}
             for block in (msg.get("content") or []):
@@ -166,6 +187,9 @@ class ClaudeCodeCliEngine(_BaseEngine):
                     continue
                 btype = block.get("type")
                 if btype == "text" and block.get("text"):
+                    # Skip if we already streamed this text via deltas.
+                    if streamed_text and streamed_text.get("seen"):
+                        continue
                     yield StreamEvent("text", {"text": block["text"]})
                 elif btype == "tool_use":
                     yield StreamEvent("tool_use", {
@@ -241,6 +265,10 @@ class CodexCliEngine(_BaseEngine):
             return
 
         assert proc.stdout is not None
+        # Per-item cursor of already-emitted agent_message text. codex may send
+        # item.updated (incremental) before item.completed; we emit only the
+        # NEW suffix each time so text streams in and is never duplicated.
+        emitted: dict[str, int] = {}
         async for raw in proc.stdout:
             line = raw.decode("utf-8", "replace").strip()
             if not line or not line.startswith("{"):
@@ -249,7 +277,7 @@ class CodexCliEngine(_BaseEngine):
                 evt = json.loads(line)
             except Exception:
                 continue
-            async for out in self._translate(evt):
+            async for out in self._translate(evt, emitted):
                 yield out
 
         await proc.wait()
@@ -260,22 +288,39 @@ class CodexCliEngine(_BaseEngine):
                     "message": f"{self.label} 退出码 {proc.returncode}: {err.strip()[:400]}",
                 })
 
-    async def _translate(self, evt: dict[str, Any]) -> "AsyncIterator[StreamEvent]":
+    async def _translate(
+        self, evt: dict[str, Any], emitted: dict[str, int] | None = None
+    ) -> "AsyncIterator[StreamEvent]":
         """Translate one codex JSONL event into our StreamEvents.
 
-        codex emits: thread.started / turn.started (ignored), item.completed
-        (the payload we care about — agent_message = text, command/tool items =
-        tool_use/tool_result), turn.completed (usage), error.
+        codex emits: thread.started / turn.started (ignored), item.updated
+        (incremental, on newer builds) and item.completed (final) for each item —
+        agent_message = text, command/tool items = tool_use/tool_result —
+        turn.completed (usage), error.
+
+        For agent_message we stream by SUFFIX: `emitted` tracks how many chars of
+        each item we've already sent, so an item.updated followed by a longer
+        item.completed only yields the newly-added tail (true streaming when the
+        build supports item.updated, single-shot otherwise — never duplicated).
         """
         from ..agent_runner import StreamEvent  # local import avoids cycle
 
         etype = evt.get("type")
-        if etype == "item.completed":
+        if etype in ("item.updated", "item.completed"):
             item = evt.get("item") or {}
             itype = item.get("type")
-            if itype == "agent_message" and item.get("text"):
-                yield StreamEvent("text", {"text": item["text"]})
-            elif itype in ("command_execution", "local_shell_call", "function_call"):
+            if itype == "agent_message":
+                text = item.get("text") or ""
+                if text and emitted is not None:
+                    key = item.get("id") or "_"
+                    sent = emitted.get(key, 0)
+                    if len(text) > sent:
+                        emitted[key] = len(text)
+                        yield StreamEvent("text", {"text": text[sent:]})
+                elif text:
+                    yield StreamEvent("text", {"text": text})
+            elif itype in ("command_execution", "local_shell_call", "function_call") \
+                    and etype == "item.completed":
                 cmd = item.get("command") or item.get("name") or ""
                 yield StreamEvent("tool_use", {
                     "id": item.get("id") or "",

@@ -20,7 +20,7 @@
     <!-- MinerU 文档解析配置 -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">文档解析 (MinerU)</div>
+        <div class="section-title">上传文件解析 (MinerU)</div>
         <div class="section-desc">
           上传 PDF / Word / PPT / 图片等文件时，使用 MinerU 云服务进行高质量解析。
           请前往

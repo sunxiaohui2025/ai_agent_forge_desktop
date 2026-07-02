@@ -1,8 +1,8 @@
 {
-  "name": "h3c-agent-desktop",
+  "name": "agent-forge-desktop",
   "version": "0.2.0",
   "private": true,
-  "description": "H3C Agent desktop shell (Electron + Python sidecar)",
+  "description": "Agent Forge desktop shell (Electron + Python sidecar)",
   "main": "main.js",
   "type": "commonjs",
   "scripts": {

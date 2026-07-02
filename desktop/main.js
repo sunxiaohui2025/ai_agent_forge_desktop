@@ -1,6 +1,6 @@
 'use strict';
 /**
- * H3C Agent — Electron main process.
+ * Agent Forge — Electron main process.
  *
  * Responsibilities:
  *  1. Resolve a per-user data dir (passed to the backend as H3C_AGENT_DATA_DIR).

@@ -1,4 +1,4 @@
-# H3C Agent Desktop (Electron shell)
+# Agent Forge Desktop (Electron shell)
 
 Electron shell that launches the Python FastAPI backend as a sidecar and loads
 the Vue frontend. Single-user desktop mode (no login).
