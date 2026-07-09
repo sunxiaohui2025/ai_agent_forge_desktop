@@ -1,7 +1,7 @@
 <template>
   <div class="space-page">
     <div class="page-head">
-      <h2 class="page-title">产物</h2>
+      <h2 class="page-title">收藏</h2>
       <div class="muted">仅你可见 · 共 {{ favs.total }} 条</div>
     </div>
 
@@ -33,7 +33,7 @@
     <div v-loading="loading" class="fav-list">
       <div v-if="!favs.items.length && !loading" class="empty">
         <el-icon :size="40"><Star /></el-icon>
-        <div class="empty-title">还没有产物</div>
+        <div class="empty-title">还没有收藏</div>
         <div class="empty-hint">在对话中点击 ⭐ 收藏 把有价值的问答存进来</div>
       </div>
 

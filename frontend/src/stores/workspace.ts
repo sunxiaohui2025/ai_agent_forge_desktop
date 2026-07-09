@@ -38,6 +38,28 @@ function withAccessToken(url: string): string {
   return `${url}${sep}t=${encodeURIComponent(tok)}`
 }
 
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  const tok = window.localStorage?.getItem('access_token') || ''
+  return tok ? { Authorization: `Bearer ${tok}` } : {}
+}
+
+async function fetchArtifactText(file: any): Promise<{ text: string; downloadUrl: string }> {
+  let downloadUrl = String(file?.download_url || '')
+  if (!downloadUrl) throw new Error('missing download url')
+  let r = await fetch(downloadUrl, { headers: getAuthHeader() })
+  if ((r.status === 410 || r.status === 404 || r.status === 403) && file?.output_path) {
+    const refreshed = await api.refreshDownload(file.output_path)
+    if (refreshed?.download_url) {
+      downloadUrl = refreshed.download_url
+      file.download_url = refreshed.download_url
+      r = await fetch(downloadUrl, { headers: getAuthHeader() })
+    }
+  }
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return { text: await r.text(), downloadUrl }
+}
+
 export const useWorkspace = defineStore('workspace', {
   state: () => ({
     list: [] as Workspace[],
@@ -56,6 +78,7 @@ export const useWorkspace = defineStore('workspace', {
     activeSideTabId: '' as string,
     sideMode: 'files' as 'files' | 'browser' | 'term' | 'artifacts',
     browserUrl: '',
+    browserBlobUrls: [] as string[],
   }),
   getters: {
     current(state): Workspace | null {
@@ -137,9 +160,17 @@ export const useWorkspace = defineStore('workspace', {
       this.sideMode = 'files'
       return file
     },
-    openSideFile(file: any) {
+    async openSideFile(file: any) {
       if (HTML_EXTS.has(fileExt(file)) && file?.download_url) {
-        return this.openBrowserTab(withAccessToken(file.download_url))
+        this.sideMode = 'browser'
+        try {
+          const { text, downloadUrl } = await fetchArtifactText(file)
+          const url = URL.createObjectURL(new Blob([text], { type: 'text/html;charset=utf-8' }))
+          file.download_url = downloadUrl
+          return this.openBrowserTab(url)
+        } catch {
+          return this.openBrowserTab(withAccessToken(file.download_url))
+        }
       }
       const id = String(file?.id || file?.output_path || file?.download_url || file?.path || file?.name || Date.now())
       const existing = this.sideTabs.find((t) => t.id === id)
@@ -156,6 +187,14 @@ export const useWorkspace = defineStore('workspace', {
       return tab
     },
     openBrowserTab(url = '') {
+      const prevUrl = this.browserUrl
+      if (prevUrl && prevUrl.startsWith('blob:') && prevUrl !== url) {
+        URL.revokeObjectURL(prevUrl)
+        this.browserBlobUrls = this.browserBlobUrls.filter((u) => u !== prevUrl)
+      }
+      if (url.startsWith('blob:') && !this.browserBlobUrls.includes(url)) {
+        this.browserBlobUrls.push(url)
+      }
       const id = 'browser'
       const existing = this.sideTabs.find((t) => t.id === id)
       if (existing) {
@@ -186,6 +225,8 @@ export const useWorkspace = defineStore('workspace', {
       if (!this.sideTabs.some((t) => t.kind === 'browser')) this.browserUrl = ''
     },
     clearSideTabs() {
+      this.browserBlobUrls.forEach((u) => URL.revokeObjectURL(u))
+      this.browserBlobUrls = []
       this.sideTabs = []
       this.activeSideTabId = ''
       this.sideMode = 'files'

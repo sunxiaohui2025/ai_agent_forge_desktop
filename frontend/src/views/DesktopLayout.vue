@@ -23,9 +23,6 @@
         <router-link to="/tasks" class="nav-item" active-class="active">
           <el-icon :size="18"><AlarmClock /></el-icon><span>自动化</span>
         </router-link>
-        <router-link to="/space" class="nav-item" active-class="active">
-          <el-icon :size="18"><FolderChecked /></el-icon><span>产物</span>
-        </router-link>
       </nav>
 
       <div class="nav-scroll">
@@ -90,6 +87,9 @@
             <el-dropdown-menu>
               <el-dropdown-item @click="goSettings">
                 <el-icon><Setting /></el-icon>设置
+              </el-dropdown-item>
+              <el-dropdown-item @click="goSpace">
+                <el-icon><Star /></el-icon>收藏
               </el-dropdown-item>
               <el-dropdown-item divided @click="onLogout">
                 <el-icon><SwitchButton /></el-icon>退出登录
@@ -361,7 +361,7 @@ const currentSection = computed(() => {
   if (route.path.startsWith('/plugins')) return 'Extensions'
   if (route.path.startsWith('/experts')) return 'Experts'
   if (route.path.startsWith('/tasks')) return 'Automations'
-  if (route.path.startsWith('/space')) return 'Artifacts'
+  if (route.path.startsWith('/space')) return 'Favorites'
   return 'Agent Session'
 })
 
@@ -369,7 +369,7 @@ const currentHeadline = computed(() => {
   if (route.path.startsWith('/plugins')) return '插件与工具'
   if (route.path.startsWith('/experts')) return '专家配置'
   if (route.path.startsWith('/tasks')) return '自动化任务'
-  if (route.path.startsWith('/space')) return '产物'
+  if (route.path.startsWith('/space')) return '收藏'
   return ws.current ? `正在协作：${ws.current.name}` : '和你的专家开始一次任务'
 })
 
@@ -423,6 +423,7 @@ function onPreview(_file: any) {
 }
 
 function goSettings() { router.push('/settings') }
+function goSpace() { router.push('/space') }
 
 async function onDeleteConv(c: any) {
   try {
