@@ -2392,8 +2392,8 @@ class AgentRunner:
                             result = _json.dumps(result, ensure_ascii=False, default=str)
                         # Cap individual tool_result to avoid bloating the context
                         # window when replaying history (e.g. MCP returning large docs).
-                        if len(result) > 6000:
-                            result = result[:6000] + f"…[历史摘要已截断, 原始长度 {len(result)} 字符]"
+                        if len(result) > 30000:
+                            result = result[:30000] + f"…[历史摘要已截断, 原始长度 {len(result)} 字符]"
                         messages.append({"role": "tool", "tool_call_id": str(tu["id"]), "content": result})
                 elif text:
                     messages.append({"role": "assistant", "content": text})

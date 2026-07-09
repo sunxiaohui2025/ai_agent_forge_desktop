@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-wrap" :class="{ 'split-mode': previewFile, 'home-mode': isHome }">
+  <div class="chat-wrap" :class="{ 'home-mode': isHome }">
     <!-- Conversation -->
     <section class="conv">
       <div ref="scrollRef" class="messages">
@@ -185,12 +185,34 @@
                    generated artifacts land at the bottom of the message and stay
                    visible without scrolling back up -->
               <div v-if="(m.content_json?.files?.length) || m._files?.length" class="files-block">
-                <FileCard
-                  v-for="(f, fi) in (m._files?.length ? m._files : m.content_json.files)"
-                  :key="fi + (f.name || '')"
-                  :file="f"
-                  @preview="openPreview"
-                />
+                <template v-for="(group, gi) in groupedOutputFiles(m)" :key="group.key">
+                  <div v-if="group.kind === 'code'" class="artifact-pack">
+                    <div class="artifact-pack-head" @click="toggleArtifactPack(m, group.key)">
+                      <div class="artifact-pack-icon"><el-icon :size="16"><DocumentCopy /></el-icon></div>
+                      <div class="artifact-pack-main">
+                        <div class="artifact-pack-title">代码变更包</div>
+                        <div class="artifact-pack-sub">{{ group.files.length }} 个代码文件 · 点击展开查看</div>
+                      </div>
+                      <button class="artifact-pack-open" @click.stop="openPreview(group.files[0])">打开首个</button>
+                      <el-icon class="artifact-pack-caret" :class="{ open: isArtifactPackOpen(m, group.key) }"><ArrowRight /></el-icon>
+                    </div>
+                    <div v-show="isArtifactPackOpen(m, group.key)" class="artifact-pack-list">
+                      <FileCard
+                        v-for="(f, fi) in group.files"
+                        :key="fi + (f.name || '')"
+                        :file="f"
+                        @preview="openPreview"
+                      />
+                    </div>
+                  </div>
+                  <FileCard
+                    v-else
+                    v-for="(f, fi) in group.files"
+                    :key="`${gi}-${fi}-${f.name || ''}`"
+                    :file="f"
+                    @preview="openPreview"
+                  />
+                </template>
               </div>
 
               <div v-if="showThinkingTail(m)" class="thinking-tail">
@@ -511,7 +533,6 @@
         </div>
       </div>
     </section>
-    <PreviewPanel v-if="previewFile" :file="previewFile" @close="closePreview" />
     <AgentCapabilityDrawer
       v-model="capDrawerVisible"
       :agent-id="capDrawerAgentId"
@@ -533,7 +554,6 @@ import type Token from 'markdown-it/lib/token.mjs'
 import WidgetRenderer from '@/components/WidgetRenderer.vue'
 import FileCard from '@/components/FileCard.vue'
 import PackProgressCard from '@/components/PackProgressCard.vue'
-import PreviewPanel from '@/components/PreviewPanel.vue'
 import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 import HomePet from '@/components/HomePet.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
@@ -1111,7 +1131,6 @@ function isLongUserMsg(m: any) {
 }
 
 const scrollRef = ref<HTMLElement | null>(null)
-const previewFile = ref<any | null>(null)
 const capDrawerVisible = ref(false)
 const capDrawerAgentId = ref<number | null>(null)
 function openCapabilities(agentId: number) {
@@ -1166,7 +1185,15 @@ function useStarter(q: string) {
   send()
 }
 
-function closePreview() { previewFile.value = null }
+function openPreviewUtility(kind: 'browser' | 'terminal' | 'file') {
+  if (kind === 'terminal') {
+    ws.openTerminalTab()
+    return
+  }
+  if (kind === 'browser') {
+    ws.openBrowserTab('')
+  }
+}
 
 // "Jump back to original conversation" support — Space.vue routes to
 // /chat?msg=<id> after selectConv-ing the right conversation. We then scroll
@@ -1347,6 +1374,10 @@ const PREVIEWABLE_EXT = new Set([
   'svg',
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp',
 ])
+const CODE_OUTPUT_EXT = new Set([
+  'js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less',
+  'py', 'sql', 'yml', 'yaml', 'sh', 'json', 'xml', 'html', 'htm',
+])
 
 function canPreview(f: any): boolean {
   if (!f) return false
@@ -1354,11 +1385,43 @@ function canPreview(f: any): boolean {
   return PREVIEWABLE_EXT.has(e)
 }
 
+function fileExt(f: any): string {
+  return (f?.ext || (f?.name || '').split('.').pop() || '').toLowerCase().replace(/^\./, '')
+}
+
+function outputFilesOf(m: any): any[] {
+  return m?._files?.length ? m._files : (m?.content_json?.files || [])
+}
+
+function groupedOutputFiles(m: any) {
+  const files = outputFilesOf(m)
+  const code = files.filter((f: any) => CODE_OUTPUT_EXT.has(fileExt(f)))
+  const rest = files.filter((f: any) => !CODE_OUTPUT_EXT.has(fileExt(f)))
+  const groups: Array<{ key: string; kind: 'code' | 'file'; files: any[] }> = []
+  if (code.length >= 2) groups.push({ key: 'code-pack', kind: 'code', files: code })
+  else rest.unshift(...code)
+  for (const f of rest) groups.push({ key: `file-${f.id || f.output_path || f.download_url || f.name}`, kind: 'file', files: [f] })
+  return groups
+}
+
+const artifactPackOpen = ref<Record<string, boolean>>({})
+function artifactPackKey(m: any, key: string) {
+  return `${getMsgKey(m)}:${key}`
+}
+function isArtifactPackOpen(m: any, key: string) {
+  const k = artifactPackKey(m, key)
+  return artifactPackOpen.value[k] !== false
+}
+function toggleArtifactPack(m: any, key: string) {
+  const k = artifactPackKey(m, key)
+  artifactPackOpen.value[k] = !isArtifactPackOpen(m, key)
+}
+
 function openPreview(f: any) {
   // Composer-uploaded files come from /api/files; their raw bytes live at /api/files/{id}/raw.
   // Skill-output files have download_url set already. Build the right URL on the fly.
   const url = f.download_url || (f.id ? `/api/files/${f.id}/raw` : '')
-  previewFile.value = { ...f, download_url: url }
+  ws.openSideFile({ ...f, download_url: url })
 }
 
 // Bridge for UI Schema → Agent. The text carries one of two prefixes:
@@ -1855,7 +1918,67 @@ function permHeadText(req: any): string {
 .chat-wrap.split-mode .conv { flex: 1 1 50%; max-width: 50%; }
 .chat-wrap.split-mode :deep(.preview-panel) { flex: 1 1 50%; max-width: 50%; }
 
-.files-block { display: flex; flex-direction: column; gap: 4px; }
+.files-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.artifact-pack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.artifact-pack-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(28,28,26,.08);
+  background: rgba(255,255,255,.90);
+  box-shadow: 0 10px 28px -26px rgba(28,28,26,.24);
+  cursor: pointer;
+}
+.artifact-pack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 12px;
+}
+.artifact-pack-main { min-width: 0; flex: 1; }
+.artifact-pack-title { font-size: 13px; font-weight: 650; color: #2a2a26; }
+.artifact-pack-sub { margin-top: 2px; font-size: 12px; color: #8a897f; }
+.artifact-pack-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #4f6f5a;
+  background: #edf6f1;
+  border: 1px solid rgba(47,111,89,.12);
+  flex-shrink: 0;
+}
+.artifact-pack-open {
+  border: 0;
+  background: rgba(28,28,26,.05);
+  color: #56554e;
+  border-radius: 9px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 560;
+  cursor: pointer;
+}
+.artifact-pack-open:hover { background: rgba(28,28,26,.08); color: #242421; }
+.artifact-pack-caret {
+  color: #aaa9a2;
+  transition: transform .15s ease;
+}
+.artifact-pack-caret.open { transform: rotate(90deg); color: #777770; }
 
 /* Permission approval cards */
 .perm-block { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 10px; }

@@ -14,6 +14,10 @@ from ...runtime.pack_engine import PackEngine
 
 router = APIRouter(prefix="/api/admin/approvals", tags=["admin-approvals"])
 
+# Strong refs so fire-and-forget resume tasks aren't garbage-collected mid-run
+# (asyncio only holds a weak ref — see the note in api/tasks.py).
+_resume_tasks: set[asyncio.Task] = set()
+
 
 @router.get("", response_model=list[PackApprovalOut])
 async def list_approvals(
@@ -70,5 +74,7 @@ async def decide_approval(
     await db.commit()
 
     # Kick off resume in background (don't block the HTTP response)
-    asyncio.create_task(_resume_pack_run(a.run_id, payload.decision, payload.reason, actor.id))
+    bg = asyncio.create_task(_resume_pack_run(a.run_id, payload.decision, payload.reason, actor.id))
+    _resume_tasks.add(bg)
+    bg.add_done_callback(_resume_tasks.discard)
     return {"ok": True, "status": a.status}

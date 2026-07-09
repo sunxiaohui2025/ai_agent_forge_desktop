@@ -44,6 +44,29 @@ def _lock_for(task_id: int) -> asyncio.Lock:
     return lk
 
 
+def _duration_ms(started, finished) -> int:
+    """Milliseconds between two datetimes, tolerant of tz-naive values.
+
+    SQLite drops tzinfo, so a `started_at` read back from the DB is offset-naive
+    while `datetime.now(timezone.utc)` is offset-aware — subtracting them raises
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes``. That
+    crash used to fire in the run-finalize path AND again in the except handler,
+    so the run was never marked finished and stayed wedged in "running" until the
+    watchdog reaped it as "worker 中断或卡死" — blocking every later cron fire.
+    We normalise both operands to UTC before subtracting.
+    """
+    if not started or not finished:
+        return 0
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    try:
+        return int((finished - started).total_seconds() * 1000)
+    except Exception:  # noqa: BLE001 — never let duration math break finalize
+        return 0
+
+
 # ---------- agent context loading (mirrors api/chat.py) ----------
 async def _load_agent_context(db: AsyncSession, agent_id: int) -> AgentContext:
     a = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one()
@@ -239,8 +262,7 @@ async def execute_task(task_id: int, *, triggered_by: str = "manual",
                 # "running" forever and every later cron fire is skipped.
                 run.status = "cancelled"
                 run.finished_at = datetime.now(timezone.utc)
-                if run.started_at:
-                    run.duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000)
+                run.duration_ms = _duration_ms(run.started_at, run.finished_at)
                 run.error_message = "执行被中断（服务重启或手动取消）"
                 task.last_run_status = "cancelled"
                 task.last_run_at = run.finished_at
@@ -314,7 +336,7 @@ async def execute_task(task_id: int, *, triggered_by: str = "manual",
 
             # finalize run
             run.finished_at = datetime.now(timezone.utc)
-            run.duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000) if run.started_at else 0
+            run.duration_ms = _duration_ms(run.started_at, run.finished_at)
             run.tokens_in = tokens_in
             run.tokens_out = tokens_out
 
@@ -351,8 +373,7 @@ async def execute_task(task_id: int, *, triggered_by: str = "manual",
             # Without this, the run is stuck "running" forever.
             run.status = "failed"
             run.finished_at = datetime.now(timezone.utc)
-            if run.started_at:
-                run.duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000)
+            run.duration_ms = _duration_ms(run.started_at, run.finished_at)
             run.error_message = f"{type(e).__name__}: {e}"
             task.last_run_status = "failed"
             task.last_run_at = run.finished_at
@@ -479,10 +500,7 @@ async def _reconcile_orphan_runs() -> None:
             run.error_message = "执行被中断（服务重启或异常退出），已自动结束。请重新运行。"
             if run.started_at and not run.finished_at:
                 run.finished_at = now
-                try:
-                    run.duration_ms = int((now - run.started_at).total_seconds() * 1000)
-                except Exception:
-                    run.duration_ms = 0
+                run.duration_ms = _duration_ms(run.started_at, now)
             affected_task_ids.add(run.task_id)
         # Reset each parent task whose last_run_status is still 'running'.
         for tid in affected_task_ids:

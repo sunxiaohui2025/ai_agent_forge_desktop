@@ -24,6 +24,19 @@ export interface TreeEntry {
 }
 
 const IS_DESKTOP = typeof window !== 'undefined' && (window as any).desktop?.isDesktop === true
+const HTML_EXTS = new Set(['html', 'htm'])
+
+function fileExt(file: any): string {
+  return String(file?.ext || String(file?.name || '').split('.').pop() || '').toLowerCase().replace(/^\./, '')
+}
+
+function withAccessToken(url: string): string {
+  if (!url || typeof window === 'undefined') return url
+  const tok = window.localStorage?.getItem('access_token') || ''
+  if (!tok) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}t=${encodeURIComponent(tok)}`
+}
 
 export const useWorkspace = defineStore('workspace', {
   state: () => ({
@@ -38,6 +51,11 @@ export const useWorkspace = defineStore('workspace', {
     searching: false,
     // read-only file preview (right panel overlay)
     preview: null as null | { path: string; name: string; ext: string; content: string; truncated: boolean; is_binary: boolean; size: number },
+    activeWorkspaceFile: null as any | null,
+    sideTabs: [] as Array<any>,
+    activeSideTabId: '' as string,
+    sideMode: 'files' as 'files' | 'browser' | 'term' | 'artifacts',
+    browserUrl: '',
   }),
   getters: {
     current(state): Workspace | null {
@@ -67,6 +85,7 @@ export const useWorkspace = defineStore('workspace', {
       this.tree = []
       this.expanded = {}
       this.searchResults = []
+      this.activeWorkspaceFile = null
       if (id != null) {
         api.touchWorkspace(id).catch(() => {})
         await this.loadTree()
@@ -110,11 +129,69 @@ export const useWorkspace = defineStore('workspace', {
     },
     async readFile(path: string) {
       if (this.currentId == null) return null
-      const data = await api.wsFile(this.currentId, path)
-      this.preview = data
-      return data
+      return await api.wsFile(this.currentId, path)
     },
     closePreview() { this.preview = null },
+    openWorkspaceFile(file: any) {
+      this.activeWorkspaceFile = file
+      this.sideMode = 'files'
+      return file
+    },
+    openSideFile(file: any) {
+      if (HTML_EXTS.has(fileExt(file)) && file?.download_url) {
+        return this.openBrowserTab(withAccessToken(file.download_url))
+      }
+      const id = String(file?.id || file?.output_path || file?.download_url || file?.path || file?.name || Date.now())
+      const existing = this.sideTabs.find((t) => t.id === id)
+      if (existing) {
+        this.activeSideTabId = id
+        this.sideMode = 'artifacts'
+        if (existing.kind === 'browser' && existing.url) this.browserUrl = existing.url
+        return existing
+      }
+      const tab = { id, kind: 'file', ...file }
+      this.sideTabs.push(tab)
+      this.activeSideTabId = id
+      this.sideMode = 'artifacts'
+      return tab
+    },
+    openBrowserTab(url = '') {
+      const id = 'browser'
+      const existing = this.sideTabs.find((t) => t.id === id)
+      if (existing) {
+        Object.assign(existing, { kind: 'browser', url })
+      } else {
+        this.sideTabs.push({ id, kind: 'browser', name: '浏览器', url })
+      }
+      this.activeSideTabId = id
+      this.sideMode = 'browser'
+      this.browserUrl = url
+    },
+    openTerminalTab() {
+      const id = 'terminal'
+      const existing = this.sideTabs.find((t) => t.id === id)
+      if (!existing) this.sideTabs.push({ id, kind: 'terminal', name: '终端' })
+      this.activeSideTabId = id
+      this.sideMode = 'term'
+    },
+    closeSideTab(id: string) {
+      const idx = this.sideTabs.findIndex((t) => t.id === id)
+      if (idx < 0) return
+      const kind = this.sideTabs[idx]?.kind
+      this.sideTabs.splice(idx, 1)
+      if (this.activeSideTabId === id) {
+        this.activeSideTabId = this.sideTabs[Math.max(0, idx - 1)]?.id || this.sideTabs[0]?.id || ''
+        if (kind === 'browser' || kind === 'terminal') this.sideMode = 'files'
+      }
+      if (!this.sideTabs.some((t) => t.kind === 'browser')) this.browserUrl = ''
+    },
+    clearSideTabs() {
+      this.sideTabs = []
+      this.activeSideTabId = ''
+      this.sideMode = 'files'
+      this.browserUrl = ''
+      this.activeWorkspaceFile = null
+    },
     async remove(id: number) {
       await api.deleteWorkspace(id)
       this.list = this.list.filter((w) => w.id !== id)

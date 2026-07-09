@@ -23,6 +23,16 @@ from ..services.croniter_compat import _next_cron_fire, next_fire_time
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
+# Strong references to fire-and-forget manual-run tasks. asyncio.create_task()
+# only registers the task in a WeakSet on the event loop, so a task with no
+# strong reference elsewhere can be garbage-collected mid-execution ("Task was
+# destroyed but it is pending!"). When that happened here the abandoned
+# execute_task() coroutine stopped being driven, its in-process runtime timeout
+# never fired, and the run stayed "running" until the watchdog reaped it as
+# "worker 中断或卡死" — which then blocked every later cron fire under the `skip`
+# concurrency policy. Keeping a reference until the task finishes prevents the GC.
+_manual_run_tasks: set[asyncio.Task] = set()
+
 
 def _validate_schedule(stype: str, sval: str | None, tz: str) -> None:
     if stype == "manual":
@@ -170,7 +180,11 @@ async def manual_run(tid: int, user: User = Depends(current_user), db: AsyncSess
             await execute_task(tid, triggered_by="manual", triggered_user_id=user.id)
         except Exception:
             logging.getLogger(__name__).exception("manual task run %s failed", tid)
-    asyncio.create_task(_run_bg())
+    bg = asyncio.create_task(_run_bg())
+    # Hold a strong reference until completion so the task can't be GC'd mid-run
+    # (see _manual_run_tasks note above), and drop it once done.
+    _manual_run_tasks.add(bg)
+    bg.add_done_callback(_manual_run_tasks.discard)
     # poll for the new row up to ~3s
     last = None
     for _ in range(30):

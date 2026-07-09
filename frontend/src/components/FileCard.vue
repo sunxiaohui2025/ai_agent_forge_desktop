@@ -1,24 +1,26 @@
 <template>
-  <div class="file-card">
-    <div class="file-icon" :style="{ background: iconBg }">
-      <el-icon :size="22"><component :is="iconComp" /></el-icon>
+  <div class="file-card" :class="[`kind-${fileKind}`, { previewable: canPreview }]" @click="onCardClick">
+    <div class="file-icon">
+      <el-icon :size="19"><component :is="iconComp" /></el-icon>
     </div>
     <div class="file-meta">
-      <div class="file-name" :title="file.name">{{ file.name }}</div>
+      <div class="file-name-row">
+        <div class="file-name" :title="file.name">{{ file.name }}</div>
+        <span class="file-badge">{{ typeLabel }}</span>
+      </div>
       <div class="file-info">
-        <span>{{ formatSize(file.size) }}</span>
+        <span>{{ fileKindLabel }}</span>
         <span class="dot">·</span>
-        <span>{{ shortMime }}</span>
+        <span>{{ formatSize(file.size) || shortMime }}</span>
       </div>
     </div>
     <div class="file-actions">
-      <button class="action-btn" v-if="canPreview" @click="onPreview">
+      <button class="action-btn primary" v-if="canPreview" @click.stop="onPreview">
         <el-icon :size="14"><View /></el-icon>
-        <span>预览</span>
+        <span>打开</span>
       </button>
-      <a class="action-btn" :href="downloadUrl" :download="file.name" @click="onDownloadClick">
+      <a class="action-btn" :href="downloadUrl" :download="file.name" @click.stop="onDownloadClick">
         <el-icon :size="14"><Download /></el-icon>
-        <span>下载</span>
       </a>
     </div>
   </div>
@@ -53,6 +55,28 @@ const ext = computed(() => {
 })
 
 const canPreview = computed(() => PREVIEWABLE.has(ext.value))
+const codeExts = new Set(['js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less', 'py', 'sql', 'yml', 'yaml', 'sh', 'json', 'xml', 'html', 'htm'])
+const fileKind = computed(() => {
+  const e = ext.value
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(e)) return 'image'
+  if (codeExts.has(e)) return 'code'
+  if (['md', 'markdown', 'txt', 'log', 'csv'].includes(e)) return 'text'
+  if (['pdf'].includes(e)) return 'document'
+  if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(e)) return 'office'
+  if (['zip', 'tar', 'gz', '7z', 'rar'].includes(e)) return 'archive'
+  return 'file'
+})
+const typeLabel = computed(() => ext.value ? ext.value.toUpperCase() : 'FILE')
+const fileKindLabel = computed(() => {
+  const k = fileKind.value
+  if (k === 'image') return '图像预览'
+  if (k === 'code') return '代码文件'
+  if (k === 'text') return '文本内容'
+  if (k === 'document') return '文档预览'
+  if (k === 'office') return '复杂文档'
+  if (k === 'archive') return '压缩包'
+  return '输出文件'
+})
 
 // Append JWT as ?t= so <a download> (which can't set Authorization) still works.
 const downloadUrl = computed(() => {
@@ -93,6 +117,10 @@ function getAuthHeader(): Record<string, string> {
 async function onPreview() {
   await ensureFreshToken()
   emit('preview', props.file)
+}
+
+function onCardClick() {
+  if (canPreview.value) onPreview()
 }
 
 async function onDownloadClick(ev: MouseEvent) {
@@ -151,45 +179,74 @@ function formatSize(b?: number): string {
 <style scoped>
 .file-card {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px;
-  background: var(--m-bg-soft);
-  border: 1px solid var(--m-border);
-  border-radius: var(--m-radius);
-  margin: 8px 0;
-  transition: border-color .15s, box-shadow .15s;
+  padding: 10px 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(250,250,247,.9));
+  border: 1px solid rgba(28,28,26,.08);
+  border-radius: 14px;
+  margin: 0;
+  box-shadow: 0 12px 34px -30px rgba(28,28,26,.34);
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
-.file-card:hover { border-color: var(--m-border-strong); box-shadow: var(--m-shadow-1); }
+.file-card.previewable { cursor: pointer; }
+.file-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(28,28,26,.15);
+  box-shadow: 0 18px 42px -34px rgba(28,28,26,.42);
+}
 
 .file-icon {
-  width: 40px; height: 40px; border-radius: 10px;
+  width: 38px; height: 38px; border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; flex-shrink: 0;
+  color: #56554e; flex-shrink: 0;
+  background: #f2f2ef;
+  border: 1px solid rgba(28,28,26,.06);
 }
+.kind-code .file-icon { color: #2f6f59; background: #edf6f1; }
+.kind-image .file-icon { color: #9a5a34; background: #fbf0e9; }
+.kind-document .file-icon { color: #3a6fb0; background: #eef3f9; }
+.kind-office .file-icon { color: #a8741a; background: #f8f1e3; }
+.kind-archive .file-icon { color: #6d625b; background: #f1efec; }
 
 .file-meta { flex: 1; min-width: 0; }
+.file-name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .file-name {
-  font-size: 14px; font-weight: 500; color: var(--m-text);
+  font-size: 13px; font-weight: 650; color: #282824;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.file-badge {
+  flex-shrink: 0;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(28,28,26,.055);
+  color: #777770;
+  font-family: var(--m-font-mono);
+  font-size: 10px;
+  line-height: 19px;
+  font-weight: 650;
+}
 .file-info {
-  font-size: 12px; color: var(--m-text-secondary);
-  margin-top: 2px;
+  font-size: 12px; color: #8a897f;
+  margin-top: 3px;
   display: flex; align-items: center; gap: 6px;
 }
 .file-info .dot { color: var(--m-text-tertiary); }
 
-.file-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.file-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .action-btn {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 10px;
-  border-radius: var(--m-radius-pill);
+  min-height: 29px;
+  padding: 0 9px;
+  border-radius: 9px;
   font-size: 12px; font-weight: 500;
-  color: var(--m-text-secondary);
-  background: transparent;
-  border: none;
+  color: #56554e;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(28,28,26,.08);
   cursor: pointer;
   text-decoration: none;
-  transition: background .15s, color .15s;
+  transition: background .15s, color .15s, border-color .15s;
 }
-.action-btn:hover { background: var(--m-surface-variant); color: var(--m-primary); }
+.action-btn.primary { color: #282824; }
+.action-btn:hover { background: #fff; color: var(--m-primary); border-color: rgba(28,28,26,.15); }
 </style>

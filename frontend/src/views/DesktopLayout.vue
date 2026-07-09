@@ -1,5 +1,5 @@
 <template>
-  <div class="dlayout" :class="{ 'nav-collapsed': navCollapsed, 'file-collapsed': filePanelCollapsed }">
+  <div class="dlayout" :class="{ 'nav-collapsed': navCollapsed, 'file-collapsed': filePanelCollapsed, 'file-fullscreen': filePanelFullscreen, 'resizing-file-panel': resizingFilePanel }">
     <!-- ░░ Left nav ░░ -->
     <aside class="nav" :class="{ 'os-win': isWin }">
       <div class="nav-top">
@@ -101,7 +101,7 @@
     </aside>
 
     <div class="work-area">
-      <div class="work-main">
+      <div ref="workMainRef" class="work-main">
         <!-- ░░ Center ░░ -->
         <div class="center">
           <header class="topbar">
@@ -147,11 +147,20 @@
         </div>
 
         <!-- ░░ Right file panel (only for tasks with a workspace) ░░ -->
+        <div
+          v-if="showFilePanel && !filePanelCollapsed && !filePanelFullscreen"
+          class="file-panel-resizer"
+          title="拖拽调整侧边栏宽度"
+          @pointerdown="startResizeFilePanel"
+        />
         <FilePanel
           v-if="showFilePanel"
           :collapsed="filePanelCollapsed"
           :terminal-dock="terminalDock"
+          :fullscreen="filePanelFullscreen"
+          :style="filePanelStyle"
           @toggle="filePanelCollapsed = !filePanelCollapsed"
+          @toggle-fullscreen="toggleFilePanelFullscreen"
           @preview="onPreview"
           @dock-terminal-bottom="openBottomTerminal"
         />
@@ -173,7 +182,6 @@
         />
       </section>
     </div>
-    <WsFilePreview />
 
     <!-- First-run onboarding: prompt the user to configure a model when none exist -->
     <el-dialog
@@ -205,7 +213,6 @@ import { useChat } from '@/stores/chat'
 import { useWorkspace } from '@/stores/workspace'
 import { useAuth } from '@/stores/auth'
 import FilePanel from '@/components/FilePanel.vue'
-import WsFilePreview from '@/components/WsFilePreview.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import TerminalTabs from '@/components/TerminalTabs.vue'
 import { Delete } from '@element-plus/icons-vue'
@@ -217,6 +224,10 @@ const chat = useChat()
 const ws = useWorkspace()
 const navCollapsed = ref(false)
 const filePanelCollapsed = ref(false)
+const filePanelFullscreen = ref(false)
+const filePanelWidth = ref(560)
+const resizingFilePanel = ref(false)
+const workMainRef = ref<HTMLElement | null>(null)
 const terminalDock = ref<'side' | 'bottom'>('side')
 const bottomTerminalOpen = ref(false)
 const bottomTerminalHeight = ref(248)
@@ -237,7 +248,10 @@ onMounted(async () => {
   window.addEventListener('workbuddy:open-terminal', onOpenTerminalPanel)
   maybeShowModelGuide()
 })
-onBeforeUnmount(() => window.removeEventListener('workbuddy:open-terminal', onOpenTerminalPanel))
+onBeforeUnmount(() => {
+  window.removeEventListener('workbuddy:open-terminal', onOpenTerminalPanel)
+  stopResizeFilePanel()
+})
 
 // ── First-run guide: nudge the user to configure a model when none exist ──
 const showModelGuide = ref(false)
@@ -270,6 +284,49 @@ const showFilePanel = computed(() =>
   route.path === '/chat' && ws.currentId != null && ws.isDesktop)
 const showBottomTerminal = computed(() =>
   showFilePanel.value && terminalDock.value === 'bottom' && bottomTerminalOpen.value)
+const filePanelStyle = computed(() => ({
+  '--file-panel-width': `${filePanelWidth.value}px`,
+  '--file-panel-compact-width': `${Math.min(280, filePanelWidth.value)}px`,
+  '--file-panel-fullscreen-width': '100%',
+}))
+
+function clampFilePanelWidth(next: number) {
+  const hostWidth = workMainRef.value?.clientWidth || window.innerWidth
+  const maxWidth = Math.max(420, Math.floor(hostWidth * 0.6))
+  const minWidth = 340
+  return Math.min(maxWidth, Math.max(minWidth, next))
+}
+
+let resizeFilePanelMove: ((e: PointerEvent) => void) | null = null
+let resizeFilePanelUp: (() => void) | null = null
+
+function stopResizeFilePanel() {
+  if (resizeFilePanelMove) window.removeEventListener('pointermove', resizeFilePanelMove)
+  if (resizeFilePanelUp) window.removeEventListener('pointerup', resizeFilePanelUp)
+  resizeFilePanelMove = null
+  resizeFilePanelUp = null
+  resizingFilePanel.value = false
+}
+
+function startResizeFilePanel(e: PointerEvent) {
+  e.preventDefault()
+  filePanelFullscreen.value = false
+  const startX = e.clientX
+  const startWidth = filePanelWidth.value
+  resizingFilePanel.value = true
+  resizeFilePanelMove = (ev: PointerEvent) => {
+    const delta = startX - ev.clientX
+    filePanelWidth.value = clampFilePanelWidth(startWidth + delta)
+  }
+  resizeFilePanelUp = () => stopResizeFilePanel()
+  window.addEventListener('pointermove', resizeFilePanelMove)
+  window.addEventListener('pointerup', resizeFilePanelUp)
+}
+
+function toggleFilePanelFullscreen() {
+  filePanelCollapsed.value = false
+  filePanelFullscreen.value = !filePanelFullscreen.value
+}
 
 function openBottomTerminal() {
   terminalDock.value = 'bottom'
@@ -541,6 +598,41 @@ async function onLogout() {
   min-height: 0;
   min-width: 0;
   display: flex;
+  position: relative;
+}
+.file-panel-resizer {
+  width: 9px;
+  flex: 0 0 9px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 12;
+  background: transparent;
+  margin-left: -4px;
+  margin-right: -5px;
+  -webkit-app-region: no-drag;
+}
+.file-panel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: rgba(28,28,26,.10);
+  transition: width .12s ease, background .12s ease, box-shadow .12s ease;
+}
+.file-panel-resizer:hover::after,
+.resizing-file-panel .file-panel-resizer::after {
+  width: 2px;
+  background: #c96442;
+  box-shadow: 0 0 0 3px rgba(201,100,66,.12);
+}
+.resizing-file-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+.resizing-file-panel * {
+  user-select: none;
 }
 .center {
   flex: 1; min-width: 0;
@@ -551,6 +643,9 @@ async function onLogout() {
   box-shadow: none;
   overflow: hidden;
   position: relative;
+}
+.file-fullscreen .center {
+  flex: 0 1 0;
 }
 .bottom-terminal-shell {
   position: relative;
