@@ -280,8 +280,13 @@ function tasksOf(wid: number) {
   return chat.convs.filter((c: any) => c.workspace_id === wid)
 }
 
+// Plain chats can also produce previewable artifacts. Keep the side panel
+// available whenever a workspace or an opened artifact/browser/terminal tab
+// exists; otherwise card clicks update the store but have nowhere to render.
 const showFilePanel = computed(() =>
-  route.path === '/chat' && ws.currentId != null && ws.isDesktop)
+  route.path === '/chat'
+  && ws.isDesktop
+  && (ws.currentId != null || ws.sideTabs.length > 0))
 const showBottomTerminal = computed(() =>
   showFilePanel.value && terminalDock.value === 'bottom' && bottomTerminalOpen.value)
 const filePanelStyle = computed(() => ({

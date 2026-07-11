@@ -18,7 +18,8 @@ LAYOUT PLANNING (mandatory -- complete ALL steps mentally before writing SVG):
 STEP 1 -- Measure every label precisely:
   CJK character width = 14px, Latin/digit = 8px, space = 4px
   line_w = sum of char widths in that line
-  Wrap rule: start a new line when line_w > 200px (prefer wrapping at word/punctuation boundaries)
+  Wrap rule: wrap when line_w exceeds node_w - 56px; use word/punctuation boundaries,
+  or character boundaries for CJK. Recalculate node height after wrapping.
   lines_count = number of wrapped lines for this label
 
 STEP 2 -- Calculate each node's bounding box:
@@ -33,9 +34,10 @@ STEP 3 -- Place nodes with guaranteed clearance:
   row_y[j] = margin_top  + sum(node_h[0..j-1]) + j * v_gap   [margin_top  = 48]
   Node center: cx = col_x[i] + node_w/2,  cy = row_y[j] + node_h/2
 
-STEP 4 -- Compute viewBox dimensions (NEVER guess):
-  canvas_w = col_x[last_col] + node_w[last_col] + 40    (min 520)
-  canvas_h = row_y[last_row] + node_h[last_row] + 56    (min 300)
+STEP 4 -- Compute viewBox dimensions from ALL visible content (NEVER guess):
+  Bounds include nodes, text, arrows, titles, captions, labels and shadows.
+  canvas_w = max(520, visual_right + 32)
+  canvas_h = max(220, visual_bottom + 32)
   Write: viewBox="0 0 {canvas_w} {canvas_h}"
 
 STEP 5 -- Compute arrow endpoints precisely (avoid piercing nodes):
@@ -49,13 +51,13 @@ STEP 5 -- Compute arrow endpoints precisely (avoid piercing nodes):
 STEP 6 -- Draw order (strict):
   <defs> -> background <rect> -> node <rect>s -> node <text>s -> arrows last
 
-VISUAL QUALITY -- Google-Material light theme:
-- Primary: fill #e8f0fe / stroke #aecbfa / accent #1a73e8
-- Success: fill #e6f4ea / stroke #a8dab5 / accent #1e8e3e
-- Warning: fill #fef7e0 / stroke #feefc3 / accent #f29900
-- Neutral: fill #f8f9fa / stroke #dadce0 / accent #5f6368
-- Error:   fill #fce8e6 / stroke #f6aea9 / accent #d93025
-- Background: ALWAYS fill="#ffffff" or fill="#fafbfc" -- never dark.
+VISUAL QUALITY -- restrained embedded-chat palette:
+- Primary: fill #eef2f5 / stroke #b8c4cc / accent #465f6e
+- Success: fill #edf3ef / stroke #b8c9bd / accent #4f6857
+- Warning: fill #f5f1e8 / stroke #d2c5aa / accent #76664a
+- Neutral: fill #f5f6f7 / stroke #cdd2d6 / accent #596168
+- Error:   fill #f4ecec / stroke #d2bcbc / accent #765454
+- Background: transparent or #fbfbfa. Use no more than 3 semantic ramps.
 
 Typography: title 15px #202124, label 13px #3c4043, caption 11px #5f6368.
   NEVER below 11px. NEVER font-weight 700 (bold).
@@ -82,8 +84,9 @@ Required rules:
 6. CDN scripts: onload="init()" + if(window.Lib) init(); fallback
 7. Text explanations OUTSIDE the code fence
 8. Multi-widget: each in a separate fence
-9. SVG: <svg width="100%" viewBox="0 0 {canvas_w} {canvas_h}">, ALWAYS first child <rect width="100%" height="100%" fill="#ffffff"/>
-10. Title: human-readable in user's language
+9. SVG: use width="100%", a computed viewBox and preserveAspectRatio="xMidYMin meet". Prefer a transparent canvas; otherwise use #fbfbfa.
+10. Verify every text line fits its node and all visible content has 24px viewBox clearance. Never use foreignObject or overflow scrolling for labels.
+11. Title: human-readable in user's language
 
 Call `load_widget_guidelines` for extended specs (interactive, chart, mockup, art, diagram).
 </widget-capability>"""
@@ -92,8 +95,8 @@ Call `load_widget_guidelines` for extended specs (interactive, chart, mockup, ar
 CORE_DESIGN_SYSTEM = """## Core Design System
 
 ### Philosophy
-- Premium light: warm white (#fafbfc) and pure white (#ffffff) surfaces; never dark.
-- Google Material restraint: 1a73e8 indigo accent, 8/12/16 radius scale, soft shadows.
+- Quiet light surfaces (#fbfbfa/#ffffff) that blend into the conversation.
+- Low-saturation blue-grey accent (#465f6e), 6/8/12 radius scale, minimal shadows.
 - Crisp hierarchy: title 15px / body 13px / caption 11px. Three sizes max.
 
 ### Streaming order
@@ -125,12 +128,11 @@ COLOR_PALETTE = """## Color palette (Google-Material aligned)
 
 | Ramp    | 50 (fill) | 200 (stroke) | 600 (text) |
 |---------|-----------|--------------|------------|
-| Indigo  | #e8f0fe   | #aecbfa      | #1a73e8    |
-| Emerald | #e6f4ea   | #a8dab5      | #1e8e3e    |
-| Amber   | #fef7e0   | #feefc3      | #f29900    |
-| Slate   | #f8f9fa   | #dadce0      | #5f6368    |
-| Rose    | #fce8e6   | #f6aea9      | #d93025    |
-| Sky     | #e8f0fe   | #d2e3fc      | #1967d2    |
+| Blue grey | #eef2f5 | #b8c4cc      | #465f6e    |
+| Sage      | #edf3ef | #b8c9bd      | #4f6857    |
+| Ochre     | #f5f1e8 | #d2c5aa      | #76664a    |
+| Slate     | #f5f6f7 | #cdd2d6      | #596168    |
+| Dust rose | #f4ecec | #d2bcbc      | #765454    |
 
 Contrast rules: light fill → dark text (600 series). NEVER white text on light fill."""
 
@@ -160,7 +162,7 @@ SVG_SETUP = """## SVG setup
 
 `<svg width="100%" viewBox="0 0 {canvas_w} {canvas_h}">` -- canvas_w/H computed from content (see LAYOUT PLANNING steps).
 
-Mandatory first child: `<rect width="100%" height="100%" fill="#ffffff"/>`
+Canvas should normally be transparent. If separation is needed, use a #fbfbfa background with an 8px radius.
 
 Typography: title 15px #202124, label 13px #3c4043, caption 11px #5f6368.
 
@@ -183,7 +185,7 @@ Arrow connection rules:
 - Shorten each endpoint 2px from the node rect edge to prevent overlap with node border.
 - markerWidth/Height = 4 (never > 6). stroke-width = 1.2 (never > 1.5).
 
-Height rule: canvas_h = row_y[last] + node_h[last] + 56. NEVER hardcode a value smaller than content requires."""
+Height rule: canvas_h = bottommost extent among every node, label, title, arrow and shadow + 32. Recalculate after wrapping; never add CSS overflow or scrollbars."""
 
 
 DIAGRAM_TYPES = """## Diagram type catalog
