@@ -94,7 +94,7 @@ def whitelist_tool_names(skills: Iterable, mcp_tool_routes: dict) -> set[str]:
     names.update(mcp_tool_routes.keys())
     # Built-in helpers also allowed
     names.update({
-        "save_output_file", "_read_skill_file", "run_skill_script",
+        "create_file_card", "save_output_file", "_read_skill_file", "run_skill_script",
         "load_widget_guidelines",
         "ask_user_pick", "ask_user_form",
     })

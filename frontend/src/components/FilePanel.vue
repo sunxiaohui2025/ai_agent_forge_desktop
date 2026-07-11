@@ -345,6 +345,9 @@ function commitBrowserUrl() {
   background: #fff;
   overflow-x: auto;
 }
+.file-panel.fullscreen .fp-tabs {
+  padding-left: max(76px, env(safe-area-inset-left));
+}
 .fp-tab {
   display: inline-flex;
   align-items: center;

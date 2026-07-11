@@ -79,6 +79,7 @@ export const useWorkspace = defineStore('workspace', {
     sideMode: 'files' as 'files' | 'browser' | 'term' | 'artifacts',
     browserUrl: '',
     browserBlobUrls: [] as string[],
+    sidePanelOpenRequest: 0,
   }),
   getters: {
     current(state): Workspace | null {
@@ -155,9 +156,13 @@ export const useWorkspace = defineStore('workspace', {
       return await api.wsFile(this.currentId, path)
     },
     closePreview() { this.preview = null },
+    requestSidePanelOpen() {
+      this.sidePanelOpenRequest += 1
+    },
     openWorkspaceFile(file: any) {
       this.activeWorkspaceFile = file
       this.sideMode = 'files'
+      this.requestSidePanelOpen()
       return file
     },
     async openSideFile(file: any) {
@@ -178,12 +183,14 @@ export const useWorkspace = defineStore('workspace', {
         this.activeSideTabId = id
         this.sideMode = 'artifacts'
         if (existing.kind === 'browser' && existing.url) this.browserUrl = existing.url
+        this.requestSidePanelOpen()
         return existing
       }
       const tab = { id, kind: 'file', ...file }
       this.sideTabs.push(tab)
       this.activeSideTabId = id
       this.sideMode = 'artifacts'
+      this.requestSidePanelOpen()
       return tab
     },
     openBrowserTab(url = '') {
@@ -205,6 +212,7 @@ export const useWorkspace = defineStore('workspace', {
       this.activeSideTabId = id
       this.sideMode = 'browser'
       this.browserUrl = url
+      this.requestSidePanelOpen()
     },
     openTerminalTab() {
       const id = 'terminal'
@@ -212,6 +220,7 @@ export const useWorkspace = defineStore('workspace', {
       if (!existing) this.sideTabs.push({ id, kind: 'terminal', name: '终端' })
       this.activeSideTabId = id
       this.sideMode = 'term'
+      this.requestSidePanelOpen()
     },
     closeSideTab(id: string) {
       const idx = this.sideTabs.findIndex((t) => t.id === id)

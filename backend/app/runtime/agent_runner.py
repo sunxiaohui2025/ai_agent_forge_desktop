@@ -130,8 +130,8 @@ widget_code 是 JSON 字符串：所有引号转义为 `\\"`，换行转义为 `
 - **首要任务**：调用 `load_widget_guidelines` 后，必须使用 `show-widget` 围栏在聊天里直接渲染——这是用户看到的"动态生图过程"
 - 不要在普通 ` ``` ` 代码块里输出 `<svg>` 源码（前端不会渲染）
 - 渲染完成后，请在围栏外补充 2-4 句中文文字说明图的要点，让回答有完整闭环
-- **可选**：渲染完成后，如果用户后续可能下载，可以再调用 `save_output_file` 把同一份代码存成 .html / .svg 文件（系统会自动识别 widget JSON 包裹并解出真实的 HTML / SVG，不会保存成不可预览的 .txt）；不需要下载时不必调用
-- 顺序：调用 `load_widget_guidelines` → 输出 ` ```show-widget ` 围栏 → 围栏闭合后再写文字 → （可选）调用 `save_output_file` 提供下载
+- **可选**：渲染完成后，如果用户需要保留为本地文件，可以再调用 `create_file_card` 把同一份代码存成 .html / .svg 文件（系统会自动识别 widget JSON 包裹并解出真实的 HTML / SVG，不会保存成不可预览的 .txt）；不需要本地文件时不必调用
+- 顺序：调用 `load_widget_guidelines` → 输出 ` ```show-widget ` 围栏 → 围栏闭合后再写文字 → （可选）调用 `create_file_card` 生成本地文件卡片
 
 ### 何时该走 Skill 而不是 widget
 - 当智能体命中或者已加载了画图相关的 Skill（如 `jiagoutu`），按 Skill 自身的 SKILL.md 指令执行，此时Skill是主导，widget是辅助手段（比如 Skill 产出图的源码，交给 widget 渲染）
@@ -415,6 +415,14 @@ class AgentRunner:
             parts.append(_WIDGET_GUIDANCE)
         if self.ctx.agent.system_prompt:
             parts.append(self.ctx.agent.system_prompt)
+        parts.append(
+            "\n## 本地文件交付规则（重要）\n"
+            "当你生成、保存或交付任何文件产物时,不要在回复中编写、展示或提示下载链接,"
+            "不要说“我为你提供下载链接”。只需简短说明文件已生成,用户可以通过消息下方的文件卡片"
+            "在右侧分屏预览、选择本机应用打开,或在 Finder/文件夹中显示。"
+            "对于 doc/docx/ppt/pptx/xls/xlsx/pdf/zip/图片等二进制文件,必须先用脚本或工具生成真实本地文件,"
+            "然后调用 create_file_card 并传 path;禁止把这些文件内容当作普通文本传入 content。"
+        )
         # Task mode: tell the agent it has a working directory it can read/write.
         ws_dir = (self.ctx.workspace_dir or "").strip()
         if ws_dir and _os_isdir(ws_dir):
@@ -457,8 +465,8 @@ class AgentRunner:
                                 follow them in the same conversation. (mirrors Anthropic
                                 Skill's "load-on-demand" semantics for OpenAI providers)
 
-        `save_output_file` and `run_skill_script` are always registered so the
-        user gets a downloadable file card whenever the model calls them. The
+        `create_file_card` and `run_skill_script` are always registered so the
+        user gets a local file card whenever the model calls them. The
         widget pipeline still owns the in-chat rendering — for widget content
         the save handler unwraps the JSON envelope into a real .html/.svg.
         """
@@ -556,36 +564,41 @@ class AgentRunner:
                     },
                 },
             })
-        # Universal output-file save tool — always available so the user gets
-        # a downloadable file card whenever the model calls it. For widget JSON
-        # content the save handler unwraps to a real .html/.svg automatically.
+        # File-card tool — always available so the user gets a local file card.
+        # If `path` is supplied, we only register the existing local file instead
+        # of asking the model to re-send large content.
         tools.append({
             "type": "function",
             "function": {
-                "name": "save_output_file",
+                "name": "create_file_card",
                 "description": (
-                    "保存生成的文件并返回下载链接。"
-                    "适用于 PPT(.html)、文档(.md/.docx)、PDF、代码、报告等任何需要交付给用户的产物。"
-                    "调用本工具后,前端会显示一张文件卡片,用户可下载或在右侧分屏预览。"
-                    "禁止把大段 HTML/Markdown/代码直接打字给用户 —— 一律改为调用本工具保存。"
-                    "文件会写入本会话的共享工作区,后续 run_skill_script 可直接按相同相对路径读取本工具产生的文件。"
-                    "因此制作多文件产物(如 PPT 的 sources/slide-01.html 等分页)时,可先用本工具逐个保存,"
-                    "再调用对应 Skill 的合并/生成脚本读取它们,无需把内容重复塞进 run_skill_script 的 files 参数。"
+                    "为已生成的本地文件创建聊天文件卡片。"
+                    "优先传 path: 如果文件已经由脚本、命令或工具生成在本地,只传该文件路径即可,不要再读取文件内容重写一遍。"
+                    "只有当文件尚未落盘、内容只存在于模型上下文时,才传 filename+content 让系统保存成文件。"
+                    "调用后前端会显示文件卡片,用户可在右侧分屏预览、选择本机应用打开或在 Finder/文件夹中显示。"
+                    "严禁在回复里写下载链接或说“供您下载/提供下载链接”。"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "可选。已经存在的本地文件路径。优先使用此字段。"
+                                "可以是共享工作区相对路径,也可以是当前工作目录内的绝对路径。"
+                            ),
+                        },
                         "filename": {
                             "type": "string",
                             "description": (
-                                "文件名,带扩展名,可包含子目录(相对路径)。"
+                                "可选。文件卡片显示名；当 content 落盘时作为文件名。带扩展名,可包含子目录(相对路径)。"
                                 "如 'agent-intro.html'、'report.md'、'sources/slide-01.html'。"
                                 "不能以 / 开头,不能包含 .. 。同名再次保存视为覆盖(重新生成)。"
                             ),
                         },
                         "content": {
                             "type": "string",
-                            "description": "完整文件内容(文本)。二进制请用 base64 编码并将 mime 设置正确。",
+                            "description": "可选。完整文件内容。仅当 path 不可用、文件尚未落盘时使用。二进制请用 base64 编码并将 mime 设置正确。",
                         },
                         "mime": {
                             "type": "string",
@@ -596,7 +609,6 @@ class AgentRunner:
                             "description": "content 编码: 'utf-8' (默认) 或 'base64'",
                         },
                     },
-                    "required": ["filename", "content"],
                 },
             },
         })
@@ -615,7 +627,7 @@ class AgentRunner:
                         "平台会注入可选的 output/output_path 供产物型脚本写文件；"
                         "也支持只返回结构化 JSON 的校验/计算型脚本。"
                         "脚本运行在本会话的共享工作区(workspace/workdir/cwd 均已注入其绝对路径),"
-                        "因此可以直接读取本会话中 save_output_file 或先前 run_skill_script 产生的文件——"
+                        "因此可以直接读取本会话中 create_file_card 或先前 run_skill_script 产生的文件——"
                         "用相同的相对路径(如 sources/slide-01.html)即可,无需重复通过 files 传内容。"
                         "当 Skill 文档要求由脚本生成最终产物时,必须优先调用本工具,不要手动拼接最终文件。"
                     ),
@@ -631,7 +643,7 @@ class AgentRunner:
                                 "type": "array",
                                 "description": (
                                     "可选。运行脚本前临时写入共享工作区的输入文件列表。"
-                                    "仅在内容尚未通过 save_output_file 落盘时才需要;若文件已在本会话保存过,"
+                                    "仅在内容尚未通过 create_file_card 落盘时才需要;若文件已在本会话保存过,"
                                     "直接用相对路径引用即可,不必重复传。"
                                     "path 必须是相对路径,不能以 / 开头,不能包含 ..。"
                                 ),
@@ -950,8 +962,17 @@ class AgentRunner:
         if skill_code in ("write_file", "read_file", "list_dir", "run_command"):
             return await self._exec_workspace_tool(skill_code, args)
 
-        # Universal output saver
-        if skill_code == "save_output_file":
+        # File card creator. `save_output_file` is kept as a legacy alias for
+        # older persisted tool calls, but new model-visible schema uses
+        # `create_file_card`.
+        if skill_code in ("create_file_card", "save_output_file"):
+            existing_path = str(args.get("path") or "").strip()
+            if existing_path:
+                return await self._create_file_card_from_path(
+                    path=existing_path,
+                    filename=str(args.get("filename") or ""),
+                    mime=args.get("mime") or None,
+                )
             return await self._save_output_file(
                 filename=str(args.get("filename") or "output"),
                 content=args.get("content") or "",
@@ -1398,11 +1419,102 @@ class AgentRunner:
             raise FileNotFoundError(f"workspace path does not exist: {rel_text}")
         return resolved
 
+    async def _create_file_card_from_path(
+        self,
+        path: str,
+        filename: str | None = None,
+        mime: str | None = None,
+    ) -> dict[str, Any]:
+        """Register an existing local file and emit a file card without rewriting content."""
+        from pathlib import Path as _Path
+        import mimetypes as _mt
+        import re as _re
+        import shutil as _sh
+        import uuid as _uuid
+        from ..core.config import settings
+        from ..db.session import SessionLocal
+        from ..services.downloads import register_file
+
+        raw = str(path or "").strip()
+        if not raw:
+            return {"error": "path is required"}
+
+        candidates: list[_Path] = []
+        p = _Path(raw).expanduser()
+        if p.is_absolute():
+            candidates.append(p)
+        else:
+            try:
+                candidates.append(self._safe_session_path(raw, allow_missing=False))
+            except Exception:
+                pass
+            ws_dir = (self.ctx.workspace_dir or "").strip()
+            if ws_dir:
+                candidates.append((_Path(ws_dir) / raw).resolve())
+
+        source = next((c.resolve() for c in candidates if c.exists() and c.is_file()), None)
+        if source is None:
+            return {"error": f"file not found: {raw}"}
+
+        allowed_roots = [
+            (_Path(settings.STORAGE_ROOT) / "outputs").resolve(),
+            _Path(settings.UPLOADS_DIR).resolve(),
+        ]
+        register_path = source
+        if not any(str(source).startswith(str(root)) for root in allowed_roots if root.exists()):
+            display_seed = filename or source.name
+            safe_name = _re.sub(r"[^\w\.\-]+", "_", display_seed).strip("._-") or source.name
+            if len(safe_name) > 120:
+                safe_name = safe_name[-120:]
+            target = self._get_session_workspace() / f"{_uuid.uuid4().hex[:8]}-{safe_name}"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _sh.copy2(str(source), str(target))
+            register_path = target
+
+        display_name = filename or source.name
+        if not mime:
+            mime = _mt.guess_type(display_name)[0] or _mt.guess_type(str(source))[0] or "application/octet-stream"
+        size = source.stat().st_size
+        async with SessionLocal() as db:
+            tok = await register_file(
+                db, file_path=str(register_path), file_name=display_name,
+                user_id=self._user_id, mime=mime,
+            )
+            await db.commit()
+            download_url = f"/api/downloads/{tok.token}"
+
+        try:
+            output_path = str(register_path.relative_to(_Path(settings.STORAGE_ROOT) / "outputs"))
+        except ValueError:
+            output_path = None
+
+        info = {
+            "name": display_name,
+            "size": size,
+            "mime": mime,
+            "ext": source.suffix.lower(),
+            "download_url": download_url,
+            "preview_url": download_url,
+            "local_path": str(source),
+        }
+        if output_path:
+            info["output_path"] = output_path
+        if not any(
+            (f.get("local_path") == info["local_path"] or f.get("download_url") == info["download_url"])
+            for f in self._saved_files
+        ):
+            self._saved_files.append(info)
+        return {
+            "ok": True,
+            "file": {"name": display_name, "size": size, "mime": mime, "local_path": str(source)},
+            "message": f"已创建 {display_name} 的本地文件卡片,无需提供下载链接。",
+        }
+
     async def _save_output_file(
         self, filename: str, content: str, mime: str | None = None,
         encoding: str = "utf-8",
     ) -> dict[str, Any]:
-        """Persist an artifact and return a download URL.
+        """Persist an artifact and return local file metadata.
 
         File goes to storage/outputs/<user_id>/<uuid>-<safe_name>.
         Side effect: appends to self._saved_files so the SSE layer can emit a `file` event.
@@ -1494,6 +1606,21 @@ class AgentRunner:
         if not mime:
             mime = _mt.guess_type(safe)[0] or "application/octet-stream"
 
+        binary_exts = {
+            ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
+            ".pdf", ".zip", ".rar", ".7z", ".tar", ".gz",
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+            ".mp3", ".mp4", ".mov", ".avi", ".wav",
+        }
+        if ext in binary_exts and str(encoding or "utf-8").lower() not in ("base64", "b64"):
+            return {
+                "error": (
+                    f"{safe} 是二进制格式,不能把文件内容按文本保存,否则文件会损坏。"
+                    "请先用脚本/工具在本地生成真实文件,然后调用 create_file_card 并传 path 创建卡片。"
+                ),
+                "hint": "Use create_file_card({path: '/path/to/file'}) for existing local files, or pass encoding='base64' for binary content.",
+            }
+
         # Guardrail for PPT HTML skills: if the model tries to save a hand-built
         # deck, reject it before it reaches the user. Valid decks generated by
         # the bundled merge/generate scripts contain these runtime markers.
@@ -1567,7 +1694,7 @@ class AgentRunner:
 
         # Decode content
         try:
-            if encoding == "base64":
+            if str(encoding or "").lower() in ("base64", "b64"):
                 target.write_bytes(_base64.b64decode(content))
             else:
                 target.write_text(content, encoding="utf-8")
@@ -1599,6 +1726,7 @@ class AgentRunner:
         info = {
             "name": safe, "size": size, "mime": mime, "ext": ext,
             "download_url": download_url, "preview_url": download_url,
+            "local_path": str(target),
         }
         if output_path:
             info["output_path"] = output_path
@@ -1606,13 +1734,13 @@ class AgentRunner:
         return {
             "ok": True,
             "file": {"name": safe, "size": size, "mime": mime},
-            "message": f"已保存 {safe} ({size} bytes)。前端会显示文件卡片,无需把内容再粘贴给用户。",
+            "message": f"已保存 {safe} ({size} bytes)。前端会显示本地文件卡片,无需提供下载链接或粘贴内容。",
         }
 
     async def _extract_fallback_files(self, full_text: str) -> None:
         """Stream-tail safety net: if the model pasted a large code block to text
-        instead of calling save_output_file, persist it ourselves so the user can
-        download it. Only triggers for blocks >= MIN_BYTES."""
+        instead of calling create_file_card, persist it ourselves so the user can
+        get a local file card. Only triggers for blocks >= MIN_BYTES."""
         import re as _re
         if not full_text or not self._user_id:
             return
@@ -1898,7 +2026,7 @@ class AgentRunner:
                 return {
                     "ok": True,
                     "result": result,
-                    "message": "脚本执行成功,未生成下载文件。",
+                    "message": "脚本执行成功,未生成可展示的文件产物。",
                 }
             if result is not None and not isinstance(result, str):
                 return {
@@ -1937,13 +2065,14 @@ class AgentRunner:
             "name": safe, "size": size, "mime": mime,
             "ext": _Path(safe).suffix.lower(),
             "download_url": download_url, "preview_url": download_url,
+            "local_path": str(produced),
         }
         if output_path:
             info["output_path"] = output_path
         info["workspace"] = str(workspace_root)
         info["workspace_files"] = written_files
         self._saved_files.append(info)
-        return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示文件卡片。"}
+        return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示本地文件卡片,无需提供下载链接。"}
 
     async def _read_skill_file(self, skill_code: str, rel_path: str) -> dict[str, Any]:
         from pathlib import Path as _Path
@@ -2142,7 +2271,7 @@ class AgentRunner:
             if _exc is not None and issubclass(_exc, (GeneratorExit, asyncio.CancelledError)):
                 return
             # If the model dumped a large code block to text instead of calling
-            # save_output_file, extract & persist it as a fallback.
+            # create_file_card, extract & persist it as a fallback.
             if self._fallback_text_buf:
                 await self._extract_fallback_files("".join(self._fallback_text_buf))
             # Emit any saved files BEFORE done so the UI gets file cards in order

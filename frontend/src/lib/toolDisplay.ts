@@ -8,7 +8,8 @@
 // 内置工具固定映射
 const BUILTIN_LABELS: Record<string, string> = {
   // 文件 / 输出
-  save_output_file: '保存输出文件',
+  create_file_card: '生成文件卡片',
+  save_output_file: '生成文件卡片',
   _read_skill_file: '读取Skill技能文件',
   run_skill_script: '执行Skill技能脚本',
 

@@ -17,11 +17,12 @@
     <div class="file-actions">
       <button class="action-btn primary" v-if="canPreview" @click.stop="onPreview">
         <el-icon :size="14"><View /></el-icon>
-        <span>打开</span>
+        <span>预览</span>
       </button>
-      <a class="action-btn" :href="downloadUrl" :download="file.name" @click.stop="onDownloadClick">
-        <el-icon :size="14"><Download /></el-icon>
-      </a>
+      <button class="action-btn" @click.stop="openLocalFile" :title="localActionTitle">
+        <el-icon :size="14"><Promotion /></el-icon>
+        <span>{{ localActionText }}</span>
+      </button>
     </div>
   </div>
 </template>
@@ -30,17 +31,18 @@
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 
-const props = defineProps<{ file: { name: string; size?: number; mime?: string; ext?: string; download_url: string; preview_url?: string; output_path?: string } }>()
+const props = defineProps<{ file: { name: string; size?: number; mime?: string; ext?: string; download_url?: string; preview_url?: string; output_path?: string; local_path?: string } }>()
 const emit = defineEmits<{ (e: 'preview', file: any): void }>()
 
 // Local override of download_url after we've refreshed an expired token.
 const refreshedUrl = ref<string>('')
 
-// Only formats the browser can render natively (or we have a light inline renderer for).
-// Office formats (docx/xlsx/pptx) go download-only — preview quality would be poor.
+// Formats the side preview can render natively, with light inline renderers, or
+// through the backend Office preview extractor.
 const PREVIEWABLE = new Set([
   'html', 'htm',
   'pdf',
+  'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
   'md', 'markdown',
   'txt', 'log',
   'json', 'csv', 'xml',
@@ -77,15 +79,9 @@ const fileKindLabel = computed(() => {
   if (k === 'archive') return '压缩包'
   return '输出文件'
 })
-
-// Append JWT as ?t= so <a download> (which can't set Authorization) still works.
-const downloadUrl = computed(() => {
-  const token = localStorage.getItem('access_token') || ''
-  const url = refreshedUrl.value || props.file.download_url || ''
-  if (!url) return ''
-  const sep = url.includes('?') ? '&' : '?'
-  return token ? `${url}${sep}t=${encodeURIComponent(token)}` : url
-})
+const isDesktop = computed(() => typeof window !== 'undefined' && !!(window as any).desktop?.isDesktop)
+const localActionText = computed(() => isDesktop.value ? '本机打开' : '打开')
+const localActionTitle = computed(() => isDesktop.value ? '使用本机默认应用打开' : '在新窗口打开')
 
 // Try a HEAD-ish ping to detect 410 from an expired download token.
 // If we still have a stable output_path, mint a fresh token and patch the file in-place.
@@ -102,6 +98,7 @@ async function ensureFreshToken(): Promise<string> {
         refreshedUrl.value = fresh.download_url
         // Mutate the parent's file object so PreviewPanel (and history) sees the new URL.
         props.file.download_url = fresh.download_url
+        if (fresh.local_path) props.file.local_path = fresh.local_path
         return fresh.download_url
       }
     }
@@ -123,21 +120,36 @@ function onCardClick() {
   if (canPreview.value) onPreview()
 }
 
-async function onDownloadClick(ev: MouseEvent) {
-  // If we already know the token is fresh, let the browser handle it natively.
-  if (refreshedUrl.value) return
-  // We can't await a real download in-anchor; intercept once, refresh, then
-  // re-trigger the click programmatically with the new URL.
-  if (!props.file.output_path) return
-  ev.preventDefault()
-  const fresh = await ensureFreshToken()
-  if (!fresh) return
-  const a = document.createElement('a')
-  a.href = downloadUrl.value
-  a.download = props.file.name || ''
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
+async function openLocalFile() {
+  let localPath = props.file.local_path || ''
+  if (!localPath && props.file.output_path) {
+    try {
+      const fresh = await api.refreshDownload(props.file.output_path)
+      if (fresh?.download_url) {
+        refreshedUrl.value = fresh.download_url
+        props.file.download_url = fresh.download_url
+      }
+      if (fresh?.local_path) {
+        localPath = fresh.local_path
+        props.file.local_path = fresh.local_path
+      }
+    } catch {}
+  }
+  const desktop = (window as any).desktop
+  if (localPath && desktop?.openPath) {
+    desktop.openPath(localPath)
+    return
+  }
+  await ensureFreshToken()
+  const url = refreshedUrl.value || props.file.download_url || props.file.preview_url || ''
+  if (url) window.open(withAccessToken(url), '_blank')
+}
+
+function withAccessToken(url: string): string {
+  const token = localStorage.getItem('access_token') || ''
+  if (!url || !token) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}t=${encodeURIComponent(token)}`
 }
 
 const iconComp = computed(() => {

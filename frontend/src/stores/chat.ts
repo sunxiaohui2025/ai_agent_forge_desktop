@@ -24,6 +24,7 @@ function stepSummary(name: string, input: any): string {
       return a.path || ''
     case 'run_command':
       return a.command || ''
+    case 'create_file_card':
     case 'save_output_file':
       return a.filename || ''
     case 'Read': case 'Edit': case 'Write':

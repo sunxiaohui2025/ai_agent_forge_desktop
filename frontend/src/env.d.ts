@@ -18,6 +18,8 @@ interface DesktopAPI {
   openURL: (url: string) => Promise<{ ok: boolean; error?: string }>
   openPath: (p: string) => Promise<string>
   showItemInFolder: (p: string) => Promise<void>
+  listAppsForFile: (p: string) => Promise<Array<{ name: string; path: string; score?: number }>>
+  openWithApp: (filePath: string, appPath: string) => Promise<string>
   term: {
     create: (opts: { id: string; cwd: string | null; cols: number; rows: number }) => Promise<{ ok: boolean }>
     write: (id: string, data: string) => void

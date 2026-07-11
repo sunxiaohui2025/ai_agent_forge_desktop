@@ -26,6 +26,73 @@ let mainWindow = null;
 let backendProc = null;
 let backendPort = 0;
 
+function collectInstalledApps() {
+  if (process.platform !== 'darwin') return [];
+  const roots = [
+    '/Applications',
+    '/System/Applications',
+    path.join(app.getPath('home'), 'Applications'),
+  ];
+  const apps = new Map();
+  const scan = (dir, depth = 0) => {
+    if (depth > 2 || !fs.existsSync(dir)) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory() && entry.name.endsWith('.app')) {
+        const name = entry.name.replace(/\.app$/i, '');
+        apps.set(full, { name, path: full });
+      } else if (entry.isDirectory()) {
+        scan(full, depth + 1);
+      }
+    }
+  };
+  roots.forEach((root) => scan(root));
+  return Array.from(apps.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function scoreAppForExt(appName, ext) {
+  const n = String(appName || '').toLowerCase();
+  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  const groups = {
+    html: ['chrome', 'safari', 'edge', 'firefox', 'arc', 'cursor', 'visual studio code'],
+    htm: ['chrome', 'safari', 'edge', 'firefox', 'arc', 'cursor', 'visual studio code'],
+    pdf: ['preview', 'adobe', 'wps'],
+    md: ['typora', 'obsidian', 'visual studio code', 'cursor', 'sublime', 'textedit'],
+    txt: ['textedit', 'visual studio code', 'cursor', 'sublime'],
+    py: ['visual studio code', 'cursor', 'pycharm', 'sublime'],
+    js: ['visual studio code', 'cursor', 'webstorm', 'sublime'],
+    ts: ['visual studio code', 'cursor', 'webstorm', 'sublime'],
+    css: ['visual studio code', 'cursor', 'webstorm', 'sublime'],
+    json: ['visual studio code', 'cursor', 'sublime'],
+    doc: ['microsoft word', 'wps', 'pages'],
+    docx: ['microsoft word', 'wps', 'pages'],
+    ppt: ['microsoft powerpoint', 'wps', 'keynote'],
+    pptx: ['microsoft powerpoint', 'wps', 'keynote'],
+    xls: ['microsoft excel', 'wps', 'numbers'],
+    xlsx: ['microsoft excel', 'wps', 'numbers'],
+    csv: ['microsoft excel', 'numbers', 'wps', 'visual studio code'],
+    png: ['preview', 'photoshop', 'sketch'],
+    jpg: ['preview', 'photoshop', 'sketch'],
+    jpeg: ['preview', 'photoshop', 'sketch'],
+    svg: ['preview', 'visual studio code', 'cursor', 'sketch'],
+  };
+  const preferred = groups[e] || [];
+  const idx = preferred.findIndex((key) => n.includes(key));
+  if (idx >= 0) return 100 - idx;
+  if (['visual studio code', 'cursor', 'sublime', 'textedit', 'preview'].some((key) => n.includes(key))) return 10;
+  return 0;
+}
+
+function appsForFile(filePath) {
+  const ext = path.extname(String(filePath || '')).replace(/^\./, '');
+  return collectInstalledApps()
+    .map((item) => ({ ...item, score: scoreAppForExt(item.name, ext) }))
+    .sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name))
+    .slice(0, 36);
+}
+
 // ── Data dir ─────────────────────────────────────────────────────
 function dataDir() {
   const dir = path.join(app.getPath('home'), '.h3c-agent');
@@ -345,6 +412,21 @@ function registerIpc() {
   });
   ipcMain.handle('shell:open-path', async (_e, p) => shell.openPath(p));
   ipcMain.handle('shell:show-item', async (_e, p) => shell.showItemInFolder(p));
+  ipcMain.handle('shell:list-apps-for-file', async (_e, p) => appsForFile(p));
+  ipcMain.handle('shell:open-with-app', async (_e, { filePath, appPath }) => {
+    if (process.platform !== 'darwin') return shell.openPath(filePath);
+    return new Promise((resolve) => {
+      const appName = path.basename(String(appPath || ''), '.app');
+      const child = spawn('open', ['-a', appPath, filePath], { stdio: 'ignore' });
+      child.on('error', (err) => resolve(err.message || String(err)));
+      child.on('exit', (code) => {
+        if (code === 0 || !appName) return resolve('');
+        const retry = spawn('open', ['-a', appName, filePath], { stdio: 'ignore' });
+        retry.on('error', (err) => resolve(err.message || String(err)));
+        retry.on('exit', (retryCode) => resolve(retryCode === 0 ? '' : `open exited with ${retryCode}`));
+      });
+    });
+  });
   registerTerminalIpc();
 }
 

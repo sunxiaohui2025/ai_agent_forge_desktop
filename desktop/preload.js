@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('desktop', {
   openURL: (url) => ipcRenderer.invoke('shell:open-url', url),
   openPath: (p) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p) => ipcRenderer.invoke('shell:show-item', p),
+  listAppsForFile: (p) => ipcRenderer.invoke('shell:list-apps-for-file', p),
+  openWithApp: (filePath, appPath) => ipcRenderer.invoke('shell:open-with-app', { filePath, appPath }),
 
   // Integrated terminal (node-pty)
   term: {

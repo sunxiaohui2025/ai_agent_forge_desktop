@@ -1368,6 +1368,7 @@ async function removeFile(f: any) {
 
 const PREVIEWABLE_EXT = new Set([
   'html', 'htm', 'pdf',
+  'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
   'md', 'markdown',
   'txt', 'log', 'json', 'csv', 'xml',
   'js', 'ts', 'css', 'py', 'sql', 'yml', 'yaml', 'sh',

@@ -135,7 +135,7 @@
                 :content="filePanelCollapsed ? '展开文件工具栏' : '收起文件工具栏'"
                 placement="bottom"
               >
-                <button class="top-icon file-toggle" @click="filePanelCollapsed = !filePanelCollapsed">
+                <button class="top-icon file-toggle" @click="toggleFilePanelCollapsed">
                   <span class="file-glyph" />
                 </button>
               </el-tooltip>
@@ -159,7 +159,7 @@
           :terminal-dock="terminalDock"
           :fullscreen="filePanelFullscreen"
           :style="filePanelStyle"
-          @toggle="filePanelCollapsed = !filePanelCollapsed"
+          @toggle="toggleFilePanelCollapsed"
           @toggle-fullscreen="toggleFilePanelFullscreen"
           @preview="onPreview"
           @dock-terminal-bottom="openBottomTerminal"
@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
@@ -290,38 +290,101 @@ const filePanelStyle = computed(() => ({
   '--file-panel-fullscreen-width': '100%',
 }))
 
-function clampFilePanelWidth(next: number) {
+function filePanelMaxWidth() {
   const hostWidth = workMainRef.value?.clientWidth || window.innerWidth
-  const maxWidth = Math.max(420, Math.floor(hostWidth * 0.6))
+  return Math.max(380, Math.floor(hostWidth * 0.54))
+}
+
+function shouldUseMaxFilePanelWidth() {
+  return ws.sideMode !== 'files' || !!ws.activeWorkspaceFile
+}
+
+function shouldAutoCollapseNavForPreview() {
+  return shouldUseMaxFilePanelWidth()
+}
+
+function expandFilePanelToMax() {
+  filePanelWidth.value = filePanelMaxWidth()
+}
+
+function clampFilePanelWidth(next: number) {
+  const maxWidth = filePanelMaxWidth()
   const minWidth = 340
   return Math.min(maxWidth, Math.max(minWidth, next))
 }
 
 let resizeFilePanelMove: ((e: PointerEvent) => void) | null = null
 let resizeFilePanelUp: (() => void) | null = null
+let resizeFilePanelCancel: (() => void) | null = null
 
 function stopResizeFilePanel() {
   if (resizeFilePanelMove) window.removeEventListener('pointermove', resizeFilePanelMove)
   if (resizeFilePanelUp) window.removeEventListener('pointerup', resizeFilePanelUp)
+  if (resizeFilePanelCancel) window.removeEventListener('pointercancel', resizeFilePanelCancel)
+  if (resizeFilePanelCancel) window.removeEventListener('blur', resizeFilePanelCancel)
   resizeFilePanelMove = null
   resizeFilePanelUp = null
+  resizeFilePanelCancel = null
   resizingFilePanel.value = false
 }
 
 function startResizeFilePanel(e: PointerEvent) {
+  if (e.button !== 0) return
   e.preventDefault()
+  stopResizeFilePanel()
   filePanelFullscreen.value = false
   const startX = e.clientX
   const startWidth = filePanelWidth.value
   resizingFilePanel.value = true
   resizeFilePanelMove = (ev: PointerEvent) => {
+    if (ev.buttons !== 1) { stopResizeFilePanel(); return }
     const delta = startX - ev.clientX
     filePanelWidth.value = clampFilePanelWidth(startWidth + delta)
   }
   resizeFilePanelUp = () => stopResizeFilePanel()
+  resizeFilePanelCancel = () => stopResizeFilePanel()
   window.addEventListener('pointermove', resizeFilePanelMove)
   window.addEventListener('pointerup', resizeFilePanelUp)
+  window.addEventListener('pointercancel', resizeFilePanelCancel)
+  window.addEventListener('blur', resizeFilePanelCancel)
 }
+
+function toggleFilePanelCollapsed() {
+  const willCollapse = !filePanelCollapsed.value
+  filePanelCollapsed.value = !filePanelCollapsed.value
+  if (willCollapse) {
+    navCollapsed.value = false
+    return
+  }
+  if (!filePanelCollapsed.value && shouldUseMaxFilePanelWidth()) {
+    if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
+    expandFilePanelToMax()
+  }
+}
+
+watch(
+  () => [ws.sideMode, ws.activeWorkspaceFile?.path || ws.activeWorkspaceFile?.name || ''],
+  () => {
+    if (!showFilePanel.value || resizingFilePanel.value) return
+    if (shouldUseMaxFilePanelWidth()) {
+      filePanelCollapsed.value = false
+      if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
+      expandFilePanelToMax()
+    }
+  },
+)
+
+watch(
+  () => ws.sidePanelOpenRequest,
+  () => {
+    if (!showFilePanel.value || resizingFilePanel.value) return
+    filePanelCollapsed.value = false
+    if (shouldUseMaxFilePanelWidth()) {
+      if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
+      expandFilePanelToMax()
+    }
+  },
+)
 
 function toggleFilePanelFullscreen() {
   filePanelCollapsed.value = false

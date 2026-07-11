@@ -14,6 +14,7 @@ from ..db.session import get_db
 from ..db.models import UploadedFile, User, Conversation, Agent
 from ..deps import current_user
 from ..services.file_parser import parse_uploaded_file
+from ..services.office_preview import build_office_preview
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -155,6 +156,26 @@ async def delete_file(
         pass
     await db.delete(rec); await db.commit()
     return {"ok": True}
+
+
+@router.get("/{file_id}/preview")
+async def preview_file(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    bearer: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    t: str | None = Query(default=None),
+):
+    user = await _resolve_caller_dual(db, bearer, t, file_id=file_id)
+    rec = (await db.execute(select(UploadedFile).where(UploadedFile.id == file_id))).scalar_one_or_none()
+    if not rec or rec.user_id != user.id:
+        raise HTTPException(404, "文件不存在")
+    p = Path(rec.path)
+    if not p.exists():
+        raise HTTPException(404, "源文件已丢失")
+    try:
+        return build_office_preview(p, rec.name)
+    except Exception as e:
+        raise HTTPException(400, f"preview_failed: {e}")
 
 
 async def _resolve_caller_dual(
