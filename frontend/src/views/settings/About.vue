@@ -5,7 +5,7 @@
     <div class="about-hero">
       <img class="about-logo" src="/icon.svg" alt="logo" />
       <div>
-        <div class="about-name">个人桌面智能体</div>
+        <div class="about-name">Agent Forge</div>
         <div class="about-tag">Agent command center · 本地工作台 / 编排 / 评审控制台</div>
       </div>
     </div>

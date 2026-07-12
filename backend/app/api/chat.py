@@ -483,7 +483,9 @@ async def send_message(
         clean_text = payload.content[len("[UI_MSG]"):].lstrip()
     else:
         clean_text = payload.content
-    hits = [] if (is_ui_action or is_ui_msg) else scan_user_input(payload.content)
+    # UI_ACTION is separately authorised against a previously persisted UI
+    # surface below. UI_MSG remains ordinary model input and must be scanned.
+    hits = [] if is_ui_action else scan_user_input(clean_text)
     if hits:
         # Persist a high-signal audit record so admins can review attempted attacks
         db.add(AuditLog(
@@ -548,6 +550,46 @@ async def send_message(
                 select(Skill).where(Skill.id.in_(extra_sk_ids), Skill.enabled.is_(True))
             )).scalars().all())
             ctx.skills = [*(ctx.skills or []), *extra_sk]
+
+    ui_action_tool: str | None = None
+    ui_action_params: dict = {}
+    if is_ui_action:
+        from ..ui_schema.types import is_declared_ui_action, whitelist_tool_names
+        import re as _re
+        m = _re.fullmatch(
+            r"\[UI_ACTION\]\s*surface=([^\s]+)\s+tool=([^\s]+)\s+params=(.*)",
+            payload.content,
+            _re.DOTALL,
+        )
+        if not m:
+            raise HTTPException(400, "UI_ACTION 格式错误")
+        surface_id = m.group(1).strip()
+        ui_action_tool = m.group(2).strip()
+        try:
+            parsed_params = json.loads(m.group(3))
+        except Exception as exc:
+            raise HTTPException(400, "UI_ACTION params 必须是合法 JSON") from exc
+        ui_action_params = parsed_params if isinstance(parsed_params, dict) else {"value": parsed_params}
+
+        recent = (await db.execute(
+            select(Message)
+            .where(Message.conversation_id == cid, Message.role == "assistant")
+            .order_by(Message.id.desc())
+            .limit(50)
+        )).scalars().all()
+        persisted_uis = []
+        for prior in recent:
+            prior_json = prior.content_json if isinstance(prior.content_json, dict) else {}
+            persisted_uis.extend(prior_json.get("uis") or [])
+        if not is_declared_ui_action(persisted_uis, surface_id, ui_action_tool):
+            raise HTTPException(403, "UI 操作来源无效或已过期")
+
+        allowed = whitelist_tool_names(ctx.skills, mcp_tool_routes={})
+        if not (
+            ui_action_tool in allowed
+            or any(ui_action_tool.startswith(f"mcp__{mcp.name}__") for mcp in ctx.mcps)
+        ):
+            raise HTTPException(403, f"工具 {ui_action_tool} 不在该智能体的允许列表")
 
     user_msg = Message(
         conversation_id=cid, role="user",
@@ -615,30 +657,7 @@ async def send_message(
                 # [UI_ACTION] short-circuit: parse + validate against this agent's
                 # tool whitelist, then call directly without LLM.
                 if is_ui_action:
-                    from ..ui_schema.types import whitelist_tool_names
-                    import re as _re
-                    m = _re.match(r"\[UI_ACTION\]\s*tool=([^\s]+)\s+params=(.*)$",
-                                  payload.content, _re.DOTALL)
-                    if not m:
-                        yield f"data: {json.dumps({'type':'error','data':{'message':'UI_ACTION 格式错误'}}, ensure_ascii=False)}\n\n"
-                    else:
-                        ui_tool = m.group(1).strip()
-                        try:
-                            ui_params = json.loads(m.group(2))
-                            if not isinstance(ui_params, dict):
-                                ui_params = {"value": ui_params}
-                        except Exception:
-                            ui_params = {"raw": m.group(2)}
-                        # Build whitelist: skill codes + mcp__<server>__* prefixes + builtins
-                        allowed = whitelist_tool_names(ctx.skills, mcp_tool_routes={})
-                        is_allowed = (
-                            ui_tool in allowed
-                            or any(ui_tool.startswith(f"mcp__{mcp.name}__") for mcp in ctx.mcps)
-                        )
-                        if not is_allowed:
-                            yield f"data: {json.dumps({'type':'error','data':{'message':f'工具 {ui_tool} 不在该智能体的允许列表'}}, ensure_ascii=False)}\n\n"
-                        else:
-                            async for ev in runner.exec_ui_action(ui_tool, ui_params):
+                    async for ev in runner.exec_ui_action(ui_action_tool or "", ui_action_params):
                                 payload_json = {"type": ev.type, "data": ev.data}
                                 yield f"data: {json.dumps(payload_json, ensure_ascii=False)}\n\n"
                                 await asyncio.sleep(0)

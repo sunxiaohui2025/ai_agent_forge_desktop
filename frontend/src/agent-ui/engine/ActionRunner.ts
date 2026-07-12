@@ -2,7 +2,7 @@
  * ActionRunner — handle user gestures on a rendered UI Schema.
  *
  *  - agent_call=false                    → noop (caller updates local state directly via filters/sort)
- *  - agent_call=true,  submit_as='tool'  → confirm? → POST [UI_ACTION] tool=... params=...
+ *  - agent_call=true,  submit_as='tool'  → confirm? → POST a surface-bound [UI_ACTION]
  *                                          (default; backend bypasses LLM and calls tool)
  *  - agent_call=true,  submit_as='message' → confirm? → render message_template with params
  *                                          → POST [UI_MSG] <text>  (backend strips prefix,
@@ -77,6 +77,6 @@ export async function runAction(opts: RunActionOpts): Promise<void> {
     console.warn('[ui-action] agent_call=true but no tool specified', action)
     return
   }
-  const text = `[UI_ACTION] tool=${action.tool} params=${JSON.stringify(params ?? {})}`
+  const text = `[UI_ACTION] surface=${schema.surface_id} tool=${action.tool} params=${JSON.stringify(params ?? {})}`
   await onAgentCall(text)
 }

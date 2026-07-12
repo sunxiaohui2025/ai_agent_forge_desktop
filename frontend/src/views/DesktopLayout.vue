@@ -304,10 +304,6 @@ function shouldUseMaxFilePanelWidth() {
   return ws.sideMode !== 'files' || !!ws.activeWorkspaceFile
 }
 
-function shouldAutoCollapseNavForPreview() {
-  return shouldUseMaxFilePanelWidth()
-}
-
 function expandFilePanelToMax() {
   filePanelWidth.value = filePanelMaxWidth()
 }
@@ -362,7 +358,6 @@ function toggleFilePanelCollapsed() {
     return
   }
   if (!filePanelCollapsed.value && shouldUseMaxFilePanelWidth()) {
-    if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
     expandFilePanelToMax()
   }
 }
@@ -373,7 +368,6 @@ watch(
     if (!showFilePanel.value || resizingFilePanel.value) return
     if (shouldUseMaxFilePanelWidth()) {
       filePanelCollapsed.value = false
-      if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
       expandFilePanelToMax()
     }
   },
@@ -385,7 +379,6 @@ watch(
     if (!showFilePanel.value || resizingFilePanel.value) return
     filePanelCollapsed.value = false
     if (shouldUseMaxFilePanelWidth()) {
-      if (shouldAutoCollapseNavForPreview()) navCollapsed.value = true
       expandFilePanelToMax()
     }
   },

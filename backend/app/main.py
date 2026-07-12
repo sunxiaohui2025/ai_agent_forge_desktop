@@ -21,6 +21,8 @@ from .services.task_runner import get_scheduler
 from .services.bridge_manager import get_bridge_manager
 from .db.session import engine, Base
 
+_log = logging.getLogger(__name__)
+
 
 async def _auto_migrate() -> None:
     """Idempotent schema sync on boot.
@@ -53,7 +55,8 @@ async def _auto_migrate() -> None:
                         "ALTER TABLE agents ADD COLUMN engine_kind VARCHAR(32)"
                     )
             except Exception:
-                pass
+                _log.exception("SQLite migration failed while adding agent columns")
+                raise
             # max_turns: NULL = 不限制轮次（默认）。旧库该列是 NOT NULL DEFAULT 15，
             # SQLite 无法直接 DROP NOT NULL，需按「新增可空列→拷贝→删旧列→改名」重建。
             try:
@@ -75,7 +78,8 @@ async def _auto_migrate() -> None:
                         "ALTER TABLE agents RENAME COLUMN max_turns_tmp TO max_turns"
                     )
             except Exception:
-                pass
+                _log.exception("SQLite migration failed while relaxing agents.max_turns")
+                raise
             # call_logs.cache_hit_tokens
             try:
                 call_cols = {
@@ -87,7 +91,8 @@ async def _auto_migrate() -> None:
                         "ALTER TABLE call_logs ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0"
                     )
             except Exception:
-                pass
+                _log.exception("SQLite migration failed while adding call_logs.cache_hit_tokens")
+                raise
             return
         for stmt in [
             # users.email (needed for task email notifications)
@@ -119,9 +124,10 @@ async def _auto_migrate() -> None:
             try:
                 await conn.exec_driver_sql(stmt)
             except Exception:
-                # Non-fatal — log-only; a fresh DB may not have the parent table yet
-                # on the very first boot before create_all, which is fine.
-                pass
+                # A partially upgraded schema is more dangerous than refusing
+                # startup: later requests would fail far from the root cause.
+                _log.exception("PostgreSQL compatibility migration failed: %s", stmt)
+                raise
 
 
 async def _seed_local_user() -> None:

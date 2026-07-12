@@ -234,7 +234,20 @@ function createWindow() {
     winOpts.title = '';
   }
   mainWindow = new BrowserWindow(winOpts);
-  mainWindow.loadURL(rendererURL());
+  const appUrl = rendererURL();
+  const appOrigin = new URL(appUrl).origin;
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    let targetOrigin = '';
+    try { targetOrigin = new URL(url).origin; } catch (_) {}
+    if (targetOrigin === appOrigin) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+  mainWindow.loadURL(appUrl);
   // DevTools off by default — it floods the console with harmless internal
   // warnings (Unknown VE context / Autofill.enable). Opt in via H3C_DEVTOOLS=1.
   if (process.env.H3C_DEVTOOLS === '1') mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -327,6 +340,19 @@ function registerIpc() {
     if (_updateDownload) {
       return { ok: false, error: '已有下载任务进行中' };
     }
+    const trustedUpdateHosts = new Set([
+      'github.com', 'api.github.com', 'objects.githubusercontent.com',
+      'github-releases.githubusercontent.com', 'release-assets.githubusercontent.com',
+    ]);
+    const validateUpdateUrl = (raw) => {
+      let parsed;
+      try { parsed = new URL(String(raw || '')); } catch (_) { throw new Error('更新地址无效'); }
+      if (parsed.protocol !== 'https:' || !trustedUpdateHosts.has(parsed.hostname)) {
+        throw new Error('更新地址不在可信发布源中');
+      }
+      return parsed.toString();
+    };
+    url = validateUpdateUrl(url);
     const downloadsDir = app.getPath('downloads');
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `H3C-Agent-Update-${ts}${path.extname(url.split('?')[0]) || '.dmg'}`;
@@ -334,6 +360,7 @@ function registerIpc() {
 
     // Helper: download with redirect following.
     const doDownload = (dlUrl) => {
+      dlUrl = validateUpdateUrl(dlUrl);
       return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(destPath);
         const req = https.get(dlUrl, { timeout: 0 }, (res) => {
@@ -392,8 +419,14 @@ function registerIpc() {
   });
 
   ipcMain.handle('app:install-update', async (_e, { path: filePath }) => {
-    if (!fs.existsSync(filePath)) return { ok: false, error: '安装文件不存在' };
-    const r = await shell.openPath(filePath);
+    const downloadsDir = path.resolve(app.getPath('downloads'));
+    const resolved = path.resolve(String(filePath || ''));
+    const allowedExts = new Set(['.dmg', '.pkg', '.exe', '.msi', '.appimage', '.deb', '.zip']);
+    if (path.dirname(resolved) !== downloadsDir || !allowedExts.has(path.extname(resolved).toLowerCase())) {
+      return { ok: false, error: '安装文件路径不受信任' };
+    }
+    if (!fs.existsSync(resolved)) return { ok: false, error: '安装文件不存在' };
+    const r = await shell.openPath(resolved);
     return { ok: true, error: r || '' };
   });
   ipcMain.handle('dialog:open-folder', async (_e, opts = {}) => {

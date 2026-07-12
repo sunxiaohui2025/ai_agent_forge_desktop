@@ -2388,8 +2388,9 @@ class AgentRunner:
             yield ("allow",)
             return
         risk = perm.classify(tool_name, args)
-        # Full-mode catastrophic guard also applies here (defense in depth).
-        if mode == "auto" and risk.level != "high":
+        # Routine file edits may run automatically, but arbitrary shell commands
+        # always require an explicit decision: cwd is not a filesystem sandbox.
+        if mode == "auto" and tool_name != "run_command" and risk.level != "high":
             yield ("allow",)
             return
         conv_id = getattr(self, "_conversation_id", None)

@@ -99,3 +99,20 @@ def whitelist_tool_names(skills: Iterable, mcp_tool_routes: dict) -> set[str]:
         "ask_user_pick", "ask_user_form",
     })
     return names
+
+
+def is_declared_ui_action(
+    ui_messages: Iterable[Any], surface_id: str, tool_name: str
+) -> bool:
+    """Return whether a persisted UI surface explicitly declared this tool action."""
+    for ui in ui_messages:
+        if not isinstance(ui, dict) or ui.get("surface_id") != surface_id:
+            continue
+        return any(
+            isinstance(action, dict)
+            and action.get("agent_call") is True
+            and (action.get("submit_as") or "tool") == "tool"
+            and action.get("tool") == tool_name
+            for action in (ui.get("actions") or [])
+        )
+    return False

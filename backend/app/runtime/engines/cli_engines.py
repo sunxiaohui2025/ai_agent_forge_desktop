@@ -60,6 +60,29 @@ def _resolve_binary(name: str) -> str | None:
     return None
 
 
+async def _collect_stderr(stream: Any, chunks: list[bytes]) -> None:
+    if stream is None:
+        return
+    while True:
+        chunk = await stream.read(4096)
+        if not chunk:
+            return
+        chunks.append(chunk)
+        if sum(map(len, chunks)) > 64 * 1024:
+            del chunks[:-8]
+
+
+async def _stop_process(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is not None:
+        return
+    proc.terminate()
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2.0)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+
+
 class _CliEngineTemplate(_BaseEngine):
     """Reference skeleton for a subprocess-backed engine.
 
@@ -113,8 +136,10 @@ class ClaudeCodeCliEngine(_BaseEngine):
         if files:
             prompt += runner._render_attachments(files)
 
+        mode = (runner.ctx.permission_mode or "ask").lower()
+        cli_mode = {"auto": "acceptEdits", "full": "bypassPermissions"}.get(mode, "default")
         argv = [binary, "-p", prompt, "--output-format", "stream-json",
-                "--verbose", "--include-partial-messages"]
+                "--verbose", "--include-partial-messages", "--permission-mode", cli_mode]
         cwd = (runner.ctx.workspace_dir or None)
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -133,22 +158,26 @@ class ClaudeCodeCliEngine(_BaseEngine):
         # at end-of-turn — we must not replay that (it would duplicate the text).
         streamed_text = {"seen": False}
         assert proc.stdout is not None
-        async for raw in proc.stdout:
-            line = raw.decode("utf-8", "replace").strip()
-            if not line:
-                continue
-            try:
-                evt = json.loads(line)
-            except Exception:
-                # Non-JSON line → surface as plain assistant text.
-                yield StreamEvent("text", {"text": line})
-                continue
-            async for out in self._translate(evt, streamed_text):
-                yield out
-
-        await proc.wait()
+        stderr_chunks: list[bytes] = []
+        stderr_task = asyncio.create_task(_collect_stderr(proc.stderr, stderr_chunks))
+        try:
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                try:
+                    evt = json.loads(line)
+                except Exception:
+                    yield StreamEvent("text", {"text": line})
+                    continue
+                async for out in self._translate(evt, streamed_text):
+                    yield out
+            await proc.wait()
+        finally:
+            await _stop_process(proc)
+            await stderr_task
         if proc.returncode not in (0, None):
-            err = (await proc.stderr.read()).decode("utf-8", "replace") if proc.stderr else ""
+            err = b"".join(stderr_chunks).decode("utf-8", "replace")
             if err.strip():
                 yield StreamEvent("error", {
                     "message": f"{self.label} 退出码 {proc.returncode}: {err.strip()[:400]}",
@@ -249,8 +278,10 @@ class CodexCliEngine(_BaseEngine):
         if files:
             prompt += runner._render_attachments(files)
 
+        mode = (runner.ctx.permission_mode or "ask").lower()
+        sandbox = {"auto": "workspace-write", "full": "danger-full-access"}.get(mode, "read-only")
         argv = [binary, "exec", "--json", "--skip-git-repo-check",
-                "-s", "read-only", prompt]
+                "-s", sandbox, prompt]
         cwd = (runner.ctx.workspace_dir or None)
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -269,20 +300,25 @@ class CodexCliEngine(_BaseEngine):
         # item.updated (incremental) before item.completed; we emit only the
         # NEW suffix each time so text streams in and is never duplicated.
         emitted: dict[str, int] = {}
-        async for raw in proc.stdout:
-            line = raw.decode("utf-8", "replace").strip()
-            if not line or not line.startswith("{"):
-                continue
-            try:
-                evt = json.loads(line)
-            except Exception:
-                continue
-            async for out in self._translate(evt, emitted):
-                yield out
-
-        await proc.wait()
+        stderr_chunks: list[bytes] = []
+        stderr_task = asyncio.create_task(_collect_stderr(proc.stderr, stderr_chunks))
+        try:
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line or not line.startswith("{"):
+                    continue
+                try:
+                    evt = json.loads(line)
+                except Exception:
+                    continue
+                async for out in self._translate(evt, emitted):
+                    yield out
+            await proc.wait()
+        finally:
+            await _stop_process(proc)
+            await stderr_task
         if proc.returncode not in (0, None):
-            err = (await proc.stderr.read()).decode("utf-8", "replace") if proc.stderr else ""
+            err = b"".join(stderr_chunks).decode("utf-8", "replace")
             if err.strip():
                 yield StreamEvent("error", {
                     "message": f"{self.label} 退出码 {proc.returncode}: {err.strip()[:400]}",
@@ -394,7 +430,7 @@ def build_cli_engines() -> list[_BaseEngine]:
             install_manager="npm",
             install_package="@anthropic-ai/claude-code",
             capabilities=EngineCapabilities(
-                native_skills=True, native_mcp=True, permission_gating=True,
+                native_skills=True, native_mcp=True, permission_gating=False,
                 thinking_budget=True, workspace_fs=True, out_of_process=True,
                 self_managed_model=True,  # uses the local claude login's model
                 notes="本机 Claude Code 命令行；使用其自身挂载的模型/账号，不使用应用内配置的模型。",
@@ -411,7 +447,7 @@ def build_cli_engines() -> list[_BaseEngine]:
             install_package="@openai/codex",
             capabilities=EngineCapabilities(
                 native_mcp=True, workspace_fs=True, out_of_process=True,
-                permission_gating=True, self_managed_model=True,
+                permission_gating=False, self_managed_model=True,
                 notes="OpenAI Codex 命令行；使用其自身挂载的模型/账号，不使用应用内配置的模型。",
             ),
         ),

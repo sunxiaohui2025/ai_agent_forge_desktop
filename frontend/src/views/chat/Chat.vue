@@ -1426,7 +1426,7 @@ function openPreview(f: any) {
 }
 
 // Bridge for UI Schema → Agent. The text carries one of two prefixes:
-//   [UI_ACTION] tool=...  → backend bypasses LLM and calls the tool directly
+//   [UI_ACTION] surface=... tool=... → backend verifies the rendered surface, then calls the tool
 //   [UI_MSG] <text>       → backend strips the prefix and runs the LLM normally,
 //                            but the user-message it persists is marked hidden
 //                            so the synthetic bubble doesn't show up in the transcript.
