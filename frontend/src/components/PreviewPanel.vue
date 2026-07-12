@@ -1,18 +1,22 @@
 <template>
   <aside class="preview-panel">
     <div v-if="showTabs" class="preview-tabs">
-      <button
+      <div
         v-for="tab in tabs"
         :key="tab.id"
+        role="button"
+        tabindex="0"
         :class="['preview-tab', { active: tab.id === activeId }]"
         @click="$emit('select', tab.id)"
+        @keydown.enter.prevent="$emit('select', tab.id)"
+        @keydown.space.prevent="$emit('select', tab.id)"
       >
         <el-icon :size="14"><component :is="tabIcon(tab)" /></el-icon>
         <span class="tab-name" :title="tab.name">{{ tab.name || tabLabel(tab) }}</span>
         <button class="tab-close" @click.stop="$emit('closeTab', tab.id)">
           <el-icon :size="12"><Close /></el-icon>
         </button>
-      </button>
+      </div>
       <el-dropdown trigger="click" placement="bottom-end" popper-class="preview-new-menu" @command="onNewTab">
         <button class="new-tab-btn" title="新选项卡">
           <el-icon :size="16"><Plus /></el-icon>

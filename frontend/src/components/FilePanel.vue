@@ -108,18 +108,22 @@
         <template v-else>
           <div v-if="ws.sideMode === 'artifacts'" class="fp-artifacts">
             <div v-if="artifactTabs.length" class="artifact-tabs">
-              <button
+              <div
                 v-for="tab in artifactTabs"
                 :key="tab.id"
+                role="button"
+                tabindex="0"
                 :class="['artifact-tab', { active: tab.id === activeArtifactId }]"
                 @click="selectArtifact(tab.id)"
+                @keydown.enter.prevent="selectArtifact(tab.id)"
+                @keydown.space.prevent="selectArtifact(tab.id)"
               >
                 <el-icon :size="13"><component :is="artifactIcon(tab)" /></el-icon>
                 <span>{{ tab.name || '生成文件' }}</span>
                 <button class="artifact-tab-close" title="关闭" @click.stop="closeArtifact(tab.id)">
                   <el-icon :size="11"><Close /></el-icon>
                 </button>
-              </button>
+              </div>
             </div>
             <PreviewPanel
               v-if="activeArtifact"
