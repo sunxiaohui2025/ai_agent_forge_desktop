@@ -6,13 +6,13 @@
 
 ## 下载安装
 
-最新版本：**v0.1.0** — [全部下载与更新日志](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/tag/v0.1.0)
+最新版本：**v0.4.0** — [全部下载与更新日志](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/tag/v0.4.0)
 
 | 平台 | 安装包 | 说明 |
 |---|---|---|
-| macOS (Apple Silicon) | [Agent.Forge-0.1.0-arm64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-arm64.dmg) | M1/M2/M3 等 ARM 芯片 |
-| macOS (Intel) | [Agent.Forge-0.1.0-x64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/Agent.Forge-0.1.0-x64.dmg) | Intel 芯片 Mac |
-| Windows (x64) | [Agent Forge-Setup-0.1.0.exe](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.1.0/H3C-Agent-Setup-0.1.0.exe) | NSIS 安装向导，支持自定义安装路径 |
+| macOS (Apple Silicon) | [Agent.Forge-0.4.0-arm64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.4.0/Agent.Forge-0.4.0-arm64.dmg) | M1/M2/M3 等 ARM 芯片 |
+| macOS (Intel) | [Agent.Forge-0.4.0-x64.dmg](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.4.0/Agent.Forge-0.4.0-x64.dmg) | Intel 芯片 Mac |
+| Windows (x64) | [Agent Forge-Setup-0.4.0.exe](https://github.com/sunxiaohui2025/ai_agent_forge_desktop/releases/download/v0.4.0/H3C-Agent-Setup-0.4.0.exe) | NSIS 安装向导，支持自定义安装路径 |
 
 > macOS 安装包未签名，首次打开请**右键 →「打开」**，或在「系统设置 → 隐私与安全性」中放行。
 > Windows 未签名安装包首次运行可能被 Windows Defender 拦截，点击「更多信息 → 仍要运行」即可。
