@@ -42,8 +42,7 @@
 | 分层安全权限执行<br><img width="100%" alt="权限管控@2x" src="https://github.com/user-attachments/assets/c95411d8-29ee-48d8-9248-90007cf4d78d" /> | 支持技能和CLI连接<br><img width="100%" alt="截屏2026-06-27 14 41 01" src="https://github.com/user-attachments/assets/8ee7312d-25bc-46ce-b9d0-41f37fa973eb" /> |
 | 支持skills/mcp/cli<br><img width="100%" alt="截屏2026-06-27 14 41 32" src="https://github.com/user-attachments/assets/5711fb93-5b19-407c-a0bc-e8375b509cbe" /> | 首页对话-支持本地文件工作目录<br><img width="100%" alt="首页文件目录界面" src="https://github.com/user-attachments/assets/495f8c9d-cd9a-420e-87f6-2eec5b5e29dd" /> |
 | 支持飞书、企业微信等多种功能渠道<br><img width="100%" alt="截屏2026-06-27 14 42 32" src="https://github.com/user-attachments/assets/e9510352-1fbf-4afa-97f5-458b34ef668a" /> | 支持用量统计<br><img width="100%" alt="截屏2026-06-27 14 42 15" src="https://github.com/user-attachments/assets/3299fd0e-8299-42ec-95ed-f1e8580c0cec" /> |
-| 支持多智能体执行引擎<br><img width="1332" height="1205" alt="企业微信20260712-152138" src="https://github.com/user-attachments/assets/f1e8285d-6eeb-47c8-878c-f07f6de41728" />
-| 中间产物在线打开渲染<br><img width="100%" alt="企业微信20260627-153944@2x" src="https://github.com/user-attachments/assets/e6b37e15-0aa3-475f-a1d2-06aa9cfeff0a" /> |
+| 支持多智能体执行引擎<br><img width="1332" height="1205" alt="企业微信20260712-152138" src="https://github.com/user-attachments/assets/f1e8285d-6eeb-47c8-878c-f07f6de41728" />| 中间产物在线打开渲染<br><img width="100%" alt="企业微信20260627-153944@2x" src="https://github.com/user-attachments/assets/e6b37e15-0aa3-475f-a1d2-06aa9cfeff0a" /> |
 
 
 ## 一、功能总览
