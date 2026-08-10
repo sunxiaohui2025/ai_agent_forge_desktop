@@ -7,7 +7,7 @@
       </el-button>
     </div>
 
-    <p class="hc-lead">自动体检模型连通性与专家智能体配置，帮助你快速发现并修复异常。</p>
+    <p class="hc-lead">自动体检模型连通性与智能体智能体配置，帮助你快速发现并修复异常。</p>
 
     <!-- 1. 模型服务 -->
     <div class="hc-item" :class="modelTone">
@@ -45,19 +45,19 @@
       </div>
     </div>
 
-    <!-- 2. 专家智能体检查 -->
+    <!-- 2. 智能体智能体检查 -->
     <div class="hc-item" :class="agentTone">
       <div class="hc-body">
         <div class="hc-title-row">
-          <span class="hc-name">专家智能体</span>
+          <span class="hc-name">智能体智能体</span>
           <el-tag v-if="!loading && report" :type="agentTagType" size="small" effect="light" round>
             {{ agentTagText }}
           </el-tag>
         </div>
         <div class="hc-sub">
-          <template v-if="loading">正在检测专家模型配置…</template>
+          <template v-if="loading">正在检测智能体模型配置…</template>
           <template v-else-if="report">
-            共 {{ report.agents.total }} 个专家 ·
+            共 {{ report.agents.total }} 个智能体 ·
             <span class="ok-text">正常 {{ report.agents.ok }}</span> ·
             <span :class="report.agents.abnormal ? 'err-text' : 'muted-text'">异常 {{ report.agents.abnormal }}</span>
             <span v-if="report.agents.abnormal && !report.agents.has_healthy_model" class="err-text">
@@ -87,7 +87,7 @@
           一键修复
         </el-button>
         <el-button v-else class="hc-link-btn" round @click="goExperts">
-          专家管理<el-icon style="margin-left:2px"><ArrowRight /></el-icon>
+          智能体管理<el-icon style="margin-left:2px"><ArrowRight /></el-icon>
         </el-button>
       </div>
     </div>
@@ -121,7 +121,7 @@ async function fix() {
   try {
     const r = await api.fixAgentModels()
     if (r.ok) {
-      ElMessage.success(`已为 ${r.fixed} 个专家替换为可用模型「${r.model_code}」`)
+      ElMessage.success(`已为 ${r.fixed} 个智能体替换为可用模型「${r.model_code}」`)
       await run()
     } else {
       ElMessage.warning(r.reason || '无法修复')

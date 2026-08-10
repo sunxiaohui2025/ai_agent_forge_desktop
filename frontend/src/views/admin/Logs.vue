@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-head">
       <span class="page-title">调用记录</span>
-      <el-select v-model="filterAgentId" placeholder="按专家筛选" clearable filterable
+      <el-select v-model="filterAgentId" placeholder="按智能体筛选" clearable filterable
                  class="filter-select" size="small" @change="onFilterChange">
         <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" />
       </el-select>
@@ -12,7 +12,7 @@
       <el-table-column label="时间" width="160">
         <template #default="{ row }"><span class="mono">{{ fmtTime(row.created_at) }}</span></template>
       </el-table-column>
-      <el-table-column label="专家" width="140" show-overflow-tooltip>
+      <el-table-column label="智能体" width="140" show-overflow-tooltip>
         <template #default="{ row }">{{ row.agent_name || '—' }}</template>
       </el-table-column>
       <el-table-column label="模型" min-width="160" show-overflow-tooltip>

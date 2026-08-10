@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-head"><span class="page-title">远程桥接</span></div>
-    <p class="bridge-lead">将外部即时通讯渠道接入本地智能体，从飞书 / 企业微信 / QQ / 微信直接与你的专家对话。</p>
+    <p class="bridge-lead">将外部即时通讯渠道接入本地智能体，从飞书 / 企业微信 / QQ / 微信直接与你的智能体对话。</p>
 
     <div class="bridge-body">
       <!-- Channel sub-nav -->
@@ -39,8 +39,8 @@
           </div>
 
           <div class="ch-field">
-            <label>回复专家</label>
-            <el-select v-model="cur.agent_id" clearable placeholder="默认专家" style="width:100%">
+            <label>回复智能体</label>
+            <el-select v-model="cur.agent_id" clearable placeholder="默认智能体" style="width:100%">
               <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" />
             </el-select>
           </div>
@@ -50,7 +50,7 @@
             <div class="ws-text">
               本渠道走长连接（WebSocket），<b>无需公网地址、无需配置回调 URL、无需消息加解密</b>。
               只要填好上方凭证，开启开关并保存，就能直接在 {{ cur.name }} 里
-              给机器人发消息和你的专家对话。
+              给机器人发消息和你的智能体对话。
             </div>
             <a v-if="cur.console_url" class="console-link" :href="cur.console_url" target="_blank" rel="noopener">
               {{ cur.console_label || '前往开发者后台配置' }} ↗

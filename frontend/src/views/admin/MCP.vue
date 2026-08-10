@@ -39,7 +39,7 @@
       <button v-if="!filteredRows.length" class="empty-mcp" @click="openCreate">
         <span class="empty-icon">{{ keyword ? 'M' : '+' }}</span>
         <span class="empty-title">{{ keyword ? '没有找到匹配连接' : '还没有 MCP 连接' }}</span>
-        <span class="empty-desc">{{ keyword ? '换个关键词试试，或创建一个新的 MCP 服务。' : '连接外部工具服务，让专家可以读取、检索或调用更多能力。' }}</span>
+        <span class="empty-desc">{{ keyword ? '换个关键词试试，或创建一个新的 MCP 服务。' : '连接外部工具服务，让智能体可以读取、检索或调用更多能力。' }}</span>
         <span class="empty-action">{{ keyword ? '新建连接' : '新建第一个连接' }}</span>
       </button>
     </div>

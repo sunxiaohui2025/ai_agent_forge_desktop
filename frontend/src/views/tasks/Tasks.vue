@@ -68,7 +68,7 @@
       <button v-if="!loading && !rows.length" class="empty-task" @click="openCreateChoice">
         <span class="empty-icon">+</span>
         <span class="empty-title">还没有自动化任务</span>
-        <span class="empty-desc">把重复提醒、定时查询或固定工作流交给专家按时执行。</span>
+        <span class="empty-desc">把重复提醒、定时查询或固定工作流交给智能体按时执行。</span>
         <span class="empty-action">新建第一个任务</span>
       </button>
     </div>
@@ -81,7 +81,7 @@
           <div class="create-choice-body">
             <div class="create-choice-title">对话创建（推荐）</div>
             <div class="create-choice-desc">
-              用一句话描述你想自动化的事情、由哪个专家执行、多久跑一次，AI 会理解需求并自动创建任务。最简单、最快的方式。
+              用一句话描述你想自动化的事情、由哪个智能体执行、多久跑一次，AI 会理解需求并自动创建任务。最简单、最快的方式。
             </div>
           </div>
           <el-tag size="small" type="primary" effect="light">推荐</el-tag>
@@ -91,7 +91,7 @@
           <div class="create-choice-body">
             <div class="create-choice-title">高级配置（专业配置）</div>
             <div class="create-choice-desc">
-              通过完整表单手动配置执行专家、提示词、调度（cron / 单次）、通知渠道、超时与并发等全部参数。适合需要精细控制的场景。
+              通过完整表单手动配置执行智能体、提示词、调度（cron / 单次）、通知渠道、超时与并发等全部参数。适合需要精细控制的场景。
             </div>
           </div>
         </button>
@@ -107,14 +107,14 @@
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选" />
         </el-form-item>
          <el-divider><span class="section-title">执行</span></el-divider>
-        <el-form-item label="执行专家">
+        <el-form-item label="执行智能体">
           <el-select v-model="form.agent_id" filterable style="width:100%">
             <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="提示词">
           <el-input v-model="form.prompt_text" type="textarea" :rows="6"
-                    placeholder="任务执行时发送给专家的内容" />
+                    placeholder="任务执行时发送给智能体的内容" />
         </el-form-item>
 
         <el-divider><span class="section-title">调度</span></el-divider>
@@ -249,7 +249,7 @@ function chooseAdvanced() {
 function chooseCustom() {
   choiceVisible.value = false
   const template =
-    '帮我创建一个自动化任务，任务是要[在这里描述要做什么]，调用[填写专家名称]专家智能体，执行时间是[多久执行一次，例如每天早上9点 / 每隔1小时]。'
+    '帮我创建一个自动化任务，任务是要[在这里描述要做什么]，调用[填写智能体名称]智能体智能体，执行时间是[多久执行一次，例如每天早上9点 / 每隔1小时]。'
   router.push({
     path: '/chat',
     query: { skill: 'create_task', draft: template },
@@ -272,7 +272,7 @@ function openEdit(row: any) {
 
 async function onSubmit() {
   if (!form.name?.trim()) return ElMessage.warning('请输入任务名称')
-  if (!form.agent_id) return ElMessage.warning('请选择执行专家')
+  if (!form.agent_id) return ElMessage.warning('请选择执行智能体')
   if (!form.prompt_text?.trim()) return ElMessage.warning('请输入提示词')
   if (form.schedule_type === 'cron' && !form.schedule_value?.trim())
     return ElMessage.warning('请填写 cron 表达式')
@@ -547,7 +547,7 @@ function relTime(iso: string | null | undefined) {
 @media (max-width: 1180px) { .task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .task-grid { grid-template-columns: 1fr; } }
 
-/* New-task path chooser (对话生成 vs 高级配置) — mirrors 专家管理 visual. */
+/* New-task path chooser (对话生成 vs 高级配置) — mirrors 智能体管理 visual. */
 .create-choices { display: flex; flex-direction: column; gap: 12px; }
 .create-choice {
   display: flex; align-items: center; gap: 14px;

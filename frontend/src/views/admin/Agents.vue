@@ -1,7 +1,7 @@
 <template>
   <div class="page">
-    <div class="page-head"><span class="page-title">专家管理</span>
-      <el-button type="primary" @click="openCreateChoice">新建专家</el-button>
+    <div class="page-head"><span class="page-title">智能体管理</span>
+      <el-button type="primary" @click="openCreateChoice">新建智能体</el-button>
     </div>
     <div class="agent-grid">
       <article v-for="row in rows" :key="row.id" class="agent-card">
@@ -59,18 +59,18 @@
           <span>召唤</span>
         </button>
       </article>
-      <button v-if="!rows.length" class="empty-agent" @click="openCreateChoice">新建第一个专家</button>
+      <button v-if="!rows.length" class="empty-agent" @click="openCreateChoice">新建第一个智能体</button>
     </div>
 
     <!-- New-expert path chooser: 自定义配置(对话生成) vs 高级配置(表单) -->
-    <el-dialog v-model="choiceVisible" title="新建专家" width="640px">
+    <el-dialog v-model="choiceVisible" title="新建智能体" width="640px">
       <div class="create-choices">
         <button class="create-choice" @click="chooseCustom">
           <div class="create-choice-icon">💬</div>
           <div class="create-choice-body">
             <div class="create-choice-title">自定义配置（对话生成）</div>
             <div class="create-choice-desc">
-              用一句话描述你想要的专家，AI 会理解你的需求，自动生成专家设定、挑选合适的技能与连接应用，确认后即可创建。最简单、最快的方式。
+              用一句话描述你想要的智能体，AI 会理解你的需求，自动生成智能体设定、挑选合适的技能与连接应用，确认后即可创建。最简单、最快的方式。
             </div>
           </div>
           <el-tag size="small" type="primary" effect="light">推荐</el-tag>
@@ -80,16 +80,16 @@
           <div class="create-choice-body">
             <div class="create-choice-title">高级配置（专业配置）</div>
             <div class="create-choice-desc">
-              通过完整表单手动配置专家的图标、设定、模型、技能、连接器、文件规则等全部参数。适合需要精细控制的场景。
+              通过完整表单手动配置智能体的图标、设定、模型、技能、连接器、文件规则等全部参数。适合需要精细控制的场景。
             </div>
           </div>
         </button>
       </div>
     </el-dialog>
 
-    <el-dialog v-model="visible" :title="editing ? '编辑专家' : '新建专家'" width="760px">
+    <el-dialog v-model="visible" :title="editing ? '编辑智能体' : '新建智能体'" width="760px">
       <el-form :model="form" label-width="120px">
-        <el-form-item label="专家图标">
+        <el-form-item label="智能体图标">
           <div class="icon-uploader">
             <div class="icon-preview">
               <img v-if="isImageIcon(form.icon)" :src="form.icon" alt="" />
@@ -109,12 +109,12 @@
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="专家编码"><el-input v-model="form.code" placeholder="例如 xhs_writer / data_analyst" /></el-form-item>
-        <el-form-item label="专家名称"><el-input v-model="form.name" placeholder="例如 小红书运营专家" /></el-form-item>
-        <el-form-item label="专家介绍">
+        <el-form-item label="智能体编码"><el-input v-model="form.code" placeholder="例如 xhs_writer / data_analyst" /></el-form-item>
+        <el-form-item label="智能体名称"><el-input v-model="form.name" placeholder="例如 小红书运营智能体" /></el-form-item>
+        <el-form-item label="智能体介绍">
           <div class="polish-wrap">
             <el-input v-model="form.description" type="textarea" :rows="3"
-                      placeholder="一句话介绍这位专家擅长什么；可点击右下角的「✨ AI 润色」生成简介 + 示例问题" />
+                      placeholder="一句话介绍这位智能体擅长什么；可点击右下角的「✨ AI 润色」生成简介 + 示例问题" />
             <button type="button" class="polish-btn"
                     :disabled="polishing.description"
                     @click="onPolish('description')">
@@ -123,10 +123,10 @@
             </button>
           </div>
         </el-form-item>
-        <el-form-item label="专家设定">
+        <el-form-item label="智能体设定">
           <div class="polish-wrap">
             <el-input v-model="form.system_prompt" type="textarea" :rows="4"
-                      placeholder="定义这位专家的角色、工作方式、输出风格和边界；可点击右下角的「✨ AI 润色」帮你结构化" />
+                      placeholder="定义这位智能体的角色、工作方式、输出风格和边界；可点击右下角的「✨ AI 润色」帮你结构化" />
             <button type="button" class="polish-btn"
                     :disabled="polishing.system_prompt"
                     @click="onPolish('system_prompt')">
@@ -140,7 +140,7 @@
             <el-option v-for="m in models" :key="m.id" :label="m.code" :value="m.id" />
           </el-select>
           <div class="field-hint">
-            可留空。若该专家使用 <b>Claude Code CLI / Codex CLI</b> 执行引擎，模型由本机 CLI 挂载，无需在此选择。
+            可留空。若该智能体使用 <b>Claude Code CLI / Codex CLI</b> 执行引擎，模型由本机 CLI 挂载，无需在此选择。
             使用内置引擎时留空则用系统默认模型。
           </div>
         </el-form-item>
@@ -151,7 +151,7 @@
         </el-form-item>
         <el-form-item label="任务轮次上限">
           <el-input-number v-model="form.max_turns" :min="30" :step="1" controls-position="right" placeholder="留空 = 不限制" />
-          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 专家一次任务中允许的工具调用循环上限。留空表示不限制（默认）；如需设置，最少 30 轮，无上限</span>
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 智能体一次任务中允许的工具调用循环上限。留空表示不限制（默认）；如需设置，最少 30 轮，无上限</span>
         </el-form-item>
         <el-form-item label="思考深度">
           <el-select v-model="form.effort" style="width:220px">
@@ -169,10 +169,10 @@
             <el-button v-if="isDesktop" @click="pickWorkDir">选择目录</el-button>
           </div>
           <div style="margin-top:4px;font-size:12px;color:var(--m-text-secondary)">
-            配置后,调用该专家时默认在此目录工作；若用户在首页对话框重新选择了工作目录,则以用户选择为准；都没有则不绑定本地目录。
+            配置后,调用该智能体时默认在此目录工作；若用户在首页对话框重新选择了工作目录,则以用户选择为准；都没有则不绑定本地目录。
           </div>
         </el-form-item>
-        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">专家能力</span></el-divider>
+        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">智能体能力</span></el-divider>
         <el-form-item label="可用技能">
           <el-select v-model="form.skill_ids" multiple style="width:100%">
             <el-option v-for="s in skills" :key="s.id" :label="`${s.code} (${s.type})`" :value="s.id" />
@@ -185,16 +185,16 @@
         </el-form-item>
         <el-form-item label="连接应用">
           <el-select v-model="form.cli_app_ids" multiple style="width:100%"
-                     placeholder="选择该专家可调用的命令行应用">
+                     placeholder="选择该智能体可调用的命令行应用">
             <el-option v-for="c in cliApps" :key="c.id"
                        :label="`${c.icon || '🧩'} ${c.name}${c.status === 'installed' ? '' : '（未安装）'}`"
                        :value="c.id" />
           </el-select>
           <div style="margin-top:4px;font-size:12px;color:var(--m-text-secondary)">
-            在「插件 → 连接应用」里连接应用后可在此多选；用户问题触发时专家会自动调用对应 CLI
+            在「插件 → 连接应用」里连接应用后可在此多选；用户问题触发时智能体会自动调用对应 CLI
           </div>
         </el-form-item>
-        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">专家处理文件规则</span></el-divider>
+        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">智能体处理文件规则</span></el-divider>
         <el-form-item label="允许扩展名">
           <el-input v-model="extText" placeholder="逗号分隔,如: pdf,docx,png. 留空=不限" />
         </el-form-item>
@@ -229,9 +229,9 @@
             字符 · 留空使用全局默认(20000),<b>0 表示不截断</b>(全文喂模型,谨慎)
           </span>
         </el-form-item>
-        <el-form-item label="默认专家">
+        <el-form-item label="默认智能体">
           <el-switch v-model="form.is_default" />
-          <span style="margin-left:12px;font-size:12px;color:var(--m-text-secondary)">勾选后将取消其它专家的默认状态。新用户首次进入对话会自动使用默认专家。</span>
+          <span style="margin-left:12px;font-size:12px;color:var(--m-text-secondary)">勾选后将取消其它智能体的默认状态。新用户首次进入对话会自动使用默认智能体。</span>
         </el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
@@ -287,7 +287,7 @@ const polishing = reactive({ description: false, system_prompt: false })
 
 const isDesktop = typeof window !== 'undefined' && (window as any).desktop?.isDesktop === true
 async function pickWorkDir() {
-  const dir = await (window as any).desktop?.openFolder?.({ title: '选择专家工作目录' })
+  const dir = await (window as any).desktop?.openFolder?.({ title: '选择智能体工作目录' })
   if (dir) form.work_dir = dir
 }
 
@@ -382,12 +382,12 @@ function chooseAdvanced() {
   choiceVisible.value = false
   openCreate()
 }
-// 自定义配置：跳转到首页对话框，预置「专家生成器」技能 + 一句话模板，
-// 用户补全描述后发送即可由 create_expert skill 理解并创建专家。
+// 自定义配置：跳转到首页对话框，预置「智能体生成器」技能 + 一句话模板，
+// 用户补全描述后发送即可由 create_expert skill 理解并创建智能体。
 function chooseCustom() {
   choiceVisible.value = false
   const template =
-    '帮我创建一个 XXX 专家，擅长 XXXXX。我的经验是：[请补充你的行业背景、相关经验]，调用我的XX应用。'
+    '帮我创建一个 XXX 智能体，擅长 XXXXX。我的经验是：[请补充你的行业背景、相关经验]，调用我的XX应用。'
   router.push({
     path: '/chat',
     query: { skill: 'create_expert', draft: template },
@@ -429,6 +429,15 @@ async function onDelete(row: any) {
 </script>
 
 <style scoped>
+/* Fill the flex-column view-shell and scroll our own overflow. .center sets
+   overflow:hidden, so without an explicit scroll container the expert grid grows
+   past the viewport and the extra cards get clipped with no scrollbar. */
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
 .muted { color: var(--m-text-tertiary); }
 .field-hint { font-size: 12px; color: var(--m-text-tertiary); line-height: 1.5; margin-top: 4px; }
 .field-hint b { color: var(--m-text-secondary, #676761); font-weight: 600; }

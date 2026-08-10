@@ -12,7 +12,7 @@
             <span>{{ homeTitle }}</span>
             
           </h2>
-          <p v-if="!chat.currentAgent">暂无可用专家,请联系管理员授权</p>
+          <p v-if="!chat.currentAgent">暂无可用智能体,请联系管理员授权</p>
         </div>
 
         <template v-else>
@@ -42,7 +42,7 @@
                 <button
                   v-if="chat.currentAgent"
                   class="cap-info-btn cap-info-btn-sm"
-                  :title="'查看专家能力'"
+                  :title="'查看智能体能力'"
                   @click="openCapabilities(chat.currentAgent.id)"
                 >
                   <el-icon :size="13"><InfoFilled /></el-icon>
@@ -335,7 +335,7 @@
           </div>
           <!-- Expert mention picker (triggered by typing "@") -->
           <div v-if="atOpen && atItems.length" class="cmd-palette at-palette" @click.stop>
-            <div class="cmd-hint">@ 指派专家执行任务 — ↑↓ 选择，Enter 确认，Esc 关闭</div>
+            <div class="cmd-hint">@ 指派智能体执行任务 — ↑↓ 选择，Enter 确认，Esc 关闭</div>
             <div
               v-for="(a, i) in atItems" :key="a.id"
               :class="['cmd-item', { active: i === atIndex }]"
@@ -343,7 +343,7 @@
             >
               <el-icon class="cmd-ico"><Avatar /></el-icon>
               <span class="cmd-label">{{ a.name }}</span>
-              <span class="cmd-kind">{{ a.description ? String(a.description).slice(0, 24) : '专家' }}</span>
+              <span class="cmd-kind">{{ a.description ? String(a.description).slice(0, 24) : '智能体' }}</span>
             </div>
           </div>
 
@@ -352,7 +352,7 @@
               v-if="isHome"
               class="composer-pet"
               :clickable="!!chat.currentAgent"
-              :title="chat.currentAgent ? '查看专家能力' : ''"
+              :title="chat.currentAgent ? '查看智能体能力' : ''"
               @activate="openCurrentAgentCapabilities"
             />
             <!-- Active mention chip: this task will be dispatched to this expert -->
@@ -364,7 +364,7 @@
               </span>
             </div>
             <!-- 生成器 chip: shown when a builder skill is active (create_expert →
-                 专家生成器, create_task → 自动化任务生成器). Dark background per
+                 智能体生成器, create_task → 自动化任务生成器). Dark background per
                  design. Sits inline to the left of the input so the prefilled
                  instruction follows on the same line instead of wrapping below. -->
             <div class="composer-input-row" :class="{ 'has-builder': builderSkill }">
@@ -381,7 +381,7 @@
                 :rows="1"
                 autosize
                 resize="none"
-                :placeholder="chat.currentAgent ? '今天帮你做什么...（输入 @ 指派专家，输入 / 调用指令）' : '请联系管理员授权可用的专家'"
+                :placeholder="chat.currentAgent ? '今天帮你做什么...（输入 @ 指派智能体，输入 / 调用指令）' : '请联系管理员授权可用的智能体'"
                 :disabled="sending || !chat.currentAgent"
                 @input="onInputChange"
                 @keydown="onComposerKeydown"
@@ -396,14 +396,14 @@
                 </el-upload>
                 <el-dropdown v-if="!isDefaultAgentActive" trigger="click" @command="onPickAgent" popper-class="agent-select-popper">
                   <button class="tool-chip agent-chip" :disabled="!chat.agents.length"
-                          :title="'切换专家'">
+                          :title="'切换智能体'">
                     <img class="agent-chip-avatar" :src="agentAvatarSrc(chat.currentAgent)" alt="" />
-                    <span class="agent-chip-name">{{ chat.currentAgent?.name || '选择专家' }}</span>
+                    <span class="agent-chip-name">{{ chat.currentAgent?.name || '选择智能体' }}</span>
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu class="agent-select-menu">
                       <el-dropdown-item v-if="!chat.agents.length" command="__none__">
-                        暂无可用专家
+                        暂无可用智能体
                       </el-dropdown-item>
                       <el-dropdown-item v-for="a in chat.agents" :key="a.id" :command="a.id">
                         <span class="agent-select-option">
@@ -743,10 +743,10 @@ function toggleSkill(sk: any) {
 // Builder chips — surfaced as a dark chip in the composer when a 生成器 skill
 // was pre-selected via a 自定义配置 / 对话创建 entry. Lets the user see / cancel
 // the builder mode. Two builders share the same chip styling:
-//   create_expert → 专家生成器 (from 专家管理)
+//   create_expert → 智能体生成器 (from 智能体管理)
 //   create_task   → 自动化任务生成器 (from 自动化)
 const BUILDER_LABELS: Record<string, string> = {
-  create_expert: '专家生成器',
+  create_expert: '智能体生成器',
   create_task: '自动化任务生成器',
 }
 const builderSkill = computed(() =>
@@ -803,7 +803,7 @@ const effectiveEngineLabel = computed(() => {
   return ENGINE_LABELS[e] || e || '命令行引擎'
 })
 const engineSelfManagedTip = computed(() =>
-  `该专家使用「${effectiveEngineLabel.value}」，模型由本机 CLI 挂载，无法在应用内切换`)
+  `该智能体使用「${effectiveEngineLabel.value}」，模型由本机 CLI 挂载，无法在应用内切换`)
 
 async function loadModels() {
   if (models.value.length) return
@@ -918,7 +918,7 @@ const BUILTIN_COMMANDS = [
   { key: 'cmd:compact',  name: '压缩',         desc: '压缩对话上下文',            action: 'builtin', icon: IcoCompact },
   { key: 'cmd:doctor',   name: '健康检查',          desc: '诊断项目健康状况',          action: 'insert', icon: IcoDoctor, insert: '请诊断当前项目的健康状况（依赖、配置、潜在问题）：' },
   { key: 'cmd:memory',   name: '记忆',          desc: '编辑项目记忆文件',          action: 'insert', icon: IcoMemory, insert: '请打开并编辑项目记忆文件 CLAUDE.md：' },
-  { key: 'cmd:health',   name: '健康检查',    desc: '系统健康检查（模型 / 专家）', action: 'builtin', icon: IcoDoctor },
+  { key: 'cmd:health',   name: '健康检查',    desc: '系统健康检查（模型 / 智能体）', action: 'builtin', icon: IcoDoctor },
 ]
 const allCommandItems = computed(() => {
   const items: any[] = []
@@ -1053,7 +1053,7 @@ function applyCommand(it: any) {
 function runBuiltinCommand(key: string) {
   switch (key) {
     case 'cmd:help':
-      ElMessage.info('输入 / 调用命令与技能，输入 @ 指派专家执行任务')
+      ElMessage.info('输入 / 调用命令与技能，输入 @ 指派智能体执行任务')
       break
     case 'cmd:clear':
       chat.newConv()
@@ -1139,7 +1139,7 @@ function openCapabilities(agentId: number) {
 }
 
 // Hide the composer expert selector when the active expert is the default one.
-// Other entry points (e.g. 召唤专家) switch to a non-default expert, where the
+// Other entry points (e.g. 召唤智能体) switch to a non-default expert, where the
 // selector stays visible so the user can switch back.
 const isDefaultAgentActive = computed(() => {
   const cur = chat.currentAgent
@@ -1150,7 +1150,7 @@ const isDefaultAgentActive = computed(() => {
 })
 
 // Clicking the floating home pet opens the same capability drawer used by the
-// 技能能力 action in 专家管理, scoped to the currently active expert.
+// 技能能力 action in 智能体管理, scoped to the currently active expert.
 function openCurrentAgentCapabilities() {
   const id = chat.currentAgent?.id
   if (id != null) openCapabilities(id)
@@ -1240,7 +1240,7 @@ onMounted(async () => {
   if (msgId && !Number.isNaN(msgId)) await scrollToMessage(msgId)
   // Deep-link: /chat?draft=...&skill=create_expert — prefill the composer and
   // pre-select a built-in skill so the user can describe an expert and have the
-  // 专家生成器 skill create it on send (自定义配置入口 from 专家管理).
+  // 智能体生成器 skill create it on send (自定义配置入口 from 智能体管理).
   await applyDraftFromQuery()
 })
 
@@ -1255,7 +1255,7 @@ async function applyDraftFromQuery() {
   const agentId = Array.isArray(agentQ) ? Number(agentQ[0]) : Number(agentQ)
   if (!draft && !skillCode && !(agentId && !Number.isNaN(agentId))) return
   // 召唤: switch the composer to the requested expert. The agent may have been
-  // created earlier in this same session (e.g. via 专家生成器), in which case the
+  // created earlier in this same session (e.g. via 智能体生成器), in which case the
   // store's cached list is stale — refresh it once before giving up so freshly
   // created experts can still be summoned.
   if (agentId && !Number.isNaN(agentId)) {
@@ -1318,7 +1318,7 @@ async function onPick(uploadFile: any) {
   const file: File | undefined = uploadFile?.raw
   if (!file) return
   if (!chat.currentAgent) {
-    ElMessage.warning('请先选择专家')
+    ElMessage.warning('请先选择智能体')
     return
   }
   if (!chat.currentConvId) {
@@ -1661,7 +1661,7 @@ function toggleSteps(m: any) {
 // Show a slightly more informative label once the model has acknowledged
 // (we got `meta`) but before any visible token.
 function thinkingLabel(m: any): string {
-  return m._meta ? '正在思考' : '正在连接专家'
+  return m._meta ? '正在思考' : '正在连接智能体'
 }
 
 // -------- Copy / Favorite (message action bar) --------
@@ -1768,7 +1768,7 @@ async function send() {
     return
   }
   const isFirstMessage = chat.messages.length === 0
-  // "@专家" dispatch: if a mentioned expert differs from the active one, switch
+  // "@智能体" dispatch: if a mentioned expert differs from the active one, switch
   // to it first so the new conversation is created bound to that expert. The
   // task text then flows to that expert's agent on send.
   if (mentionedExpert.value && mentionedExpert.value.id !== chat.currentAgent?.id) {
@@ -2989,7 +2989,7 @@ function permHeadText(req: any): string {
 }
 .mention-clear:hover { opacity: 1; background: rgba(0,0,0,.06); }
 
-/* 专家生成器 chip — dark (black) background per design.
+/* 智能体生成器 chip — dark (black) background per design.
    The chip sits inline to the left of the textarea so the prefilled
    instruction text follows on the same line instead of wrapping below. */
 .composer-input-row { display: flex; align-items: flex-start; gap: 8px; }
@@ -3201,6 +3201,9 @@ function permHeadText(req: any): string {
 :global(.agent-select-menu.el-dropdown-menu) {
   padding: 6px !important;
   min-width: 218px;
+  /* 智能体较多时只显示约 8 项，超出后出现滚动条，避免撑乱页面 */
+  max-height: 300px;
+  overflow-y: auto;
   background: transparent !important;
   box-shadow: none !important;
 }

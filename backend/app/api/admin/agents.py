@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update
 from ...db.session import get_db
 from ...db.models import Agent, AgentSkill, AgentMCP, AgentPack, RoleAgentGrant, SolutionPack, Model, AgentCliApp
+from ...db.models import Conversation, Message, Task, Workspace
 from ...deps import require_admin_or_operator
 from ...services.audit import audit
 from ...db.models import User
@@ -160,8 +161,28 @@ async def delete_agent(aid: int, db: AsyncSession = Depends(get_db), actor: User
     a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
     if not a:
         raise HTTPException(404, "不存在")
+    # Explicitly clean up dependent rows before deleting the agent. Conversation
+    # and Task reference agents.id WITHOUT ondelete (default RESTRICT), so foreign
+    # key enforcement (PRAGMA foreign_keys=ON) would otherwise raise IntegrityError
+    # → 500 whenever the expert has chat history or scheduled tasks.
+    # We also clear the join grants / workspace default here so deletion works even
+    # if ON DELETE CASCADE / SET NULL is missing on an older schema.
+    conv_ids = [
+        r[0] for r in (await db.execute(select(Conversation.id).where(Conversation.agent_id == aid))).all()
+    ]
+    if conv_ids:
+        await db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
+        await db.execute(delete(Conversation).where(Conversation.agent_id == aid))
+    await db.execute(delete(Task).where(Task.agent_id == aid))
+    await db.execute(delete(AgentSkill).where(AgentSkill.agent_id == aid))
+    await db.execute(delete(AgentMCP).where(AgentMCP.agent_id == aid))
+    await db.execute(delete(AgentPack).where(AgentPack.agent_id == aid))
+    await db.execute(delete(AgentCliApp).where(AgentCliApp.agent_id == aid))
+    await db.execute(delete(RoleAgentGrant).where(RoleAgentGrant.agent_id == aid))
+    await db.execute(update(Workspace).where(Workspace.default_agent_id == aid).values(default_agent_id=None))
     await audit(db, actor.id, "agent.delete", target_type="agent", target_id=a.id)
-    await db.delete(a); await db.commit()
+    await db.delete(a)
+    await db.commit()
     return {"ok": True}
 
 

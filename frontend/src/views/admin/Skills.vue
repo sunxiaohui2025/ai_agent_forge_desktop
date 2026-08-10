@@ -411,7 +411,7 @@ function skillSource(row: any) {
   return 'manual'
 }
 
-// Built-in callable skills (e.g. 专家生成器/create_expert) are seeded by the
+// Built-in callable skills (e.g. 智能体生成器/create_expert) are seeded by the
 // backend and must not be deleted from the UI.
 function isBuiltin(row: any) {
   return row?.source_json?.builtin === true

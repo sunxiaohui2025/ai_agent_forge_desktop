@@ -40,7 +40,7 @@
           <div class="eng-name mono">{{ e.name }}</div>
           <div v-if="e.self_managed_model" class="eng-selfmodel">
             ⚠ 该引擎使用本机 CLI 挂载的模型/账号，<b>不使用应用内配置的模型</b>。
-            选择它的专家在对话时不显示模型选择，也无需在专家里配置模型。
+            选择它的智能体在对话时不显示模型选择，也无需在智能体里配置模型。
           </div>
           <div v-if="e.capabilities?.notes" class="eng-notes">{{ e.capabilities.notes }}</div>
           <div class="eng-caps">

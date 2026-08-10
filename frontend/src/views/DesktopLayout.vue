@@ -18,7 +18,7 @@
           <el-icon :size="18"><MagicStick /></el-icon><span>插件</span>
         </router-link>
         <router-link to="/experts" class="nav-item" active-class="active">
-          <el-icon :size="18"><User /></el-icon><span>专家</span>
+          <el-icon :size="18"><User /></el-icon><span>智能体</span>
         </router-link>
         <router-link to="/tasks" class="nav-item" active-class="active">
           <el-icon :size="18"><AlarmClock /></el-icon><span>自动化</span>
@@ -192,7 +192,7 @@
         <div class="guide-icon"><el-icon :size="30"><MagicStick /></el-icon></div>
         <h3 class="guide-title">先配置一个模型吧</h3>
         <p class="guide-desc">
-          还没有可用的大模型。配置一个模型后，才能开始和你的专家对话。
+          还没有可用的大模型。配置一个模型后，才能开始和你的智能体对话。
           你可以选择厂商填入 API Key，也可以一键导入本机已安装的模型（Claude Code / Codex / CC Switch）。
         </p>
       </div>
@@ -428,10 +428,10 @@ const currentSection = computed(() => {
 
 const currentHeadline = computed(() => {
   if (route.path.startsWith('/plugins')) return '插件与工具'
-  if (route.path.startsWith('/experts')) return '专家配置'
+  if (route.path.startsWith('/experts')) return '智能体配置'
   if (route.path.startsWith('/tasks')) return '自动化任务'
   if (route.path.startsWith('/space')) return '收藏'
-  return ws.current ? `正在协作：${ws.current.name}` : '和你的专家开始一次任务'
+  return ws.current ? `正在协作：${ws.current.name}` : '和你的智能体开始一次任务'
 })
 
 async function onNewTask() {
