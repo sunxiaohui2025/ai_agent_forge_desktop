@@ -439,6 +439,18 @@ class AgentRunner:
                 f"当用户让你查看/创建/修改文件或运行命令时，**必须实际调用上述工具**完成，而不是给出操作教程。\n"
                 f"当前执行权限：{mode_zh}。"
             )
+        else:
+            # Chat mode still has a real, writable session workspace.
+            parts.append(
+                "\n## 会话工作区（重要）\n"
+                "你有一个本会话独占的可读写工作目录，并**拥有执行能力**：\n"
+                "- `list_dir` / `read_file` / `write_file`：查看和读写工作区文件\n"
+                "- `run_command`：在工作区执行 shell 命令（可以运行 python 脚本、装依赖等）\n"
+                "- 用户上传的文件可通过 `uploads/<文件名>` 直接读取，**不需要**先把内容拷来拷去\n"
+                "调用 skill 目录下的脚本时，优先按该 skill 文档里的命令行用法通过 `run_command` 执行；"
+                "只有脚本明确导出了 generate()/run() 时才用 `run_skill_script`。\n"
+                "不要声称自己无法访问文件系统或无法执行命令。"
+            )
         if self.ctx.skills:
             parts.append("\n## 你可使用的 Skills\n")
             for s in self.ctx.skills:
@@ -471,64 +483,71 @@ class AgentRunner:
         the save handler unwraps the JSON envelope into a real .html/.svg.
         """
         tools: list[dict[str, Any]] = []
-        # ── Workspace file tools (task mode only) ──
-        # When the conversation is bound to a local working directory, expose
-        # file-system tools to OpenAI-compatible models (GLM/DeepSeek/Kimi/…)
-        # so they can actually read/write files and run commands — mirroring
-        # the Anthropic SDK's Read/Write/Edit/Bash. Every call streams as a
+        # ── Workspace file tools ──
+        # In task mode these operate on the bound project directory. In plain
+        # chat mode they operate on the per-session workspace (which also has
+        # `uploads/` symlinked in), so the agent can still read uploaded files,
+        # write artifacts and run scripts. Every call streams as a
         # tool_use/tool_result event so the user sees each action.
         ws_dir = (self.ctx.workspace_dir or "").strip()
-        if ws_dir and _os_isdir(ws_dir):
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "write_file",
-                    "description": "在当前工作目录中创建或覆盖一个文本文件。path 为相对工作目录的路径。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "相对工作目录的文件路径,如 abc.txt 或 src/main.py"},
-                            "content": {"type": "string", "description": "完整文件内容"},
-                        },
-                        "required": ["path", "content"],
+        _has_task_dir = bool(ws_dir) and _os_isdir(ws_dir)
+        _scope_zh = "当前工作目录" if _has_task_dir else "本会话工作区"
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": f"在{_scope_zh}中创建或覆盖一个文本文件。path 为相对路径。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "相对路径,如 abc.txt 或 src/main.py"},
+                        "content": {"type": "string", "description": "完整文件内容"},
                     },
+                    "required": ["path", "content"],
                 },
-            })
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "read_file",
-                    "description": "读取当前工作目录中某个文件的文本内容。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"path": {"type": "string", "description": "相对工作目录的文件路径"}},
-                        "required": ["path"],
-                    },
+            },
+        })
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": (
+                    f"读取{_scope_zh}中某个文件的文本内容。"
+                    "用户上传的文件可用 uploads/<文件名> 读取。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string", "description": "相对路径"}},
+                    "required": ["path"],
                 },
-            })
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "list_dir",
-                    "description": "列出当前工作目录(或其子目录)下的文件和文件夹。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"path": {"type": "string", "description": "相对子目录,留空表示根目录"}},
-                    },
+            },
+        })
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "list_dir",
+                "description": f"列出{_scope_zh}(或其子目录)下的文件和文件夹。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string", "description": "相对子目录,留空表示根目录"}},
                 },
-            })
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "run_command",
-                    "description": "在当前工作目录中执行一条 shell 命令并返回输出(stdout/stderr)。用于构建、测试、git 等操作。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"command": {"type": "string", "description": "要执行的 shell 命令"}},
-                        "required": ["command"],
-                    },
+            },
+        })
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": (
+                    f"在{_scope_zh}执行一条 shell 命令并返回输出(stdout/stderr)。"
+                    "可用于运行 skill 脚本、安装依赖、构建、测试等。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {"command": {"type": "string", "description": "要执行的 shell 命令"}},
+                    "required": ["command"],
                 },
-            })
+            },
+        })
         for s in self.ctx.skills:
             tools.append({
                 "type": "function",
@@ -622,13 +641,16 @@ class AgentRunner:
                 "function": {
                     "name": "run_skill_script",
                     "description": (
-                        "安全运行已加载 Skill 目录下的 Python 脚本。"
-                        "脚本可导出 generate(**kwargs) 或 run(**kwargs)。"
+                        "运行已加载 Skill 目录下的 Python 脚本。"
+                        "脚本若导出 generate(**kwargs)/run(**kwargs) 则直接在进程内调用；"
+                        "若只是普通 argparse 命令行脚本,平台会自动以子进程方式运行(kwargs 映射为 --参数),"
+                        "因此**不要**因为脚本没有 generate/run 就放弃调用。"
                         "平台会注入可选的 output/output_path 供产物型脚本写文件；"
                         "也支持只返回结构化 JSON 的校验/计算型脚本。"
                         "脚本运行在本会话的共享工作区(workspace/workdir/cwd 均已注入其绝对路径),"
-                        "因此可以直接读取本会话中 create_file_card 或先前 run_skill_script 产生的文件——"
+                        "可直接读取本会话中 create_file_card 或先前 run_skill_script 产生的文件——"
                         "用相同的相对路径(如 sources/slide-01.html)即可,无需重复通过 files 传内容。"
+                        "用户上传的文件可用 uploads/<文件名> 相对路径读取。"
                         "当 Skill 文档要求由脚本生成最终产物时,必须优先调用本工具,不要手动拼接最终文件。"
                     ),
                     "parameters": {
@@ -638,7 +660,16 @@ class AgentRunner:
                             "script": {"type": "string",
                                         "description": "相对 Skill 根目录的脚本路径,如 scripts/merge_deck.py"},
                             "kwargs": {"type": "object",
-                                        "description": "传给脚本 generate/run(**kwargs) 的参数字典"},
+                                        "description": "传给脚本 generate/run(**kwargs) 的参数字典;若脚本是 argparse 命令行脚本,会自动映射为 --参数 形式"},
+                            "args": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "可选。按顺序传给脚本的位置参数(命令行 argv)。"
+                                    "用于直接读取 sys.argv 而没有 argparse 的脚本,如 "
+                                    "quick_validate.py <目录>。"
+                                ),
+                            },
                             "files": {
                                 "type": "array",
                                 "description": (
@@ -863,9 +894,14 @@ class AgentRunner:
         from pathlib import Path as _Path
         import subprocess as _sp
         base_str = (self.ctx.workspace_dir or "").strip()
-        if not base_str or not _os_isdir(base_str):
-            return {"ok": False, "error": "未绑定有效的工作目录"}
-        base = _Path(base_str).resolve()
+        if base_str and _os_isdir(base_str):
+            base = _Path(base_str).resolve()
+        else:
+            # Chat mode (no bound project dir): operate inside the session
+            # workspace instead of refusing. Desktop deployment — the agent is
+            # expected to be able to produce and run things in a plain chat.
+            base = self._get_session_workspace()
+            self._link_uploads_into_workspace()
 
         def _safe(rel: str) -> _Path:
             target = (base / (rel or "")).resolve()
@@ -1000,6 +1036,7 @@ class AgentRunner:
                 output_filename=args.get("output_filename") or None,
                 files=args.get("files") or None,
                 workdir=args.get("workdir") or None,
+                args=args.get("args") or None,
             )
 
         # Solution Pack runner (special tool injected as run_pack__<pack_code>)
@@ -1776,10 +1813,16 @@ class AgentRunner:
         output_filename: str | None = None,
         files: list[dict[str, Any]] | None = None,
         workdir: str | None = None,
+        args: list[Any] | None = None,
     ) -> dict[str, Any]:
-        """Execute a bundled Skill python script as an in-process function call.
+        """Execute a bundled Skill python script.
 
-        Contract: the script must define `generate(**kwargs)` or `run(**kwargs)`.
+        Preferred path: the script defines `generate(**kwargs)` or `run(**kwargs)`
+        and is called in-process. If it defines neither (a plain CLI script) or
+        cannot be imported, it is run as a subprocess instead — kwargs map to
+        `--flag value`, or `args` is passed as positional argv for scripts that
+        read `sys.argv` directly.
+
         It may return a produced file path, write to the injected output path, or
         return a structured JSON-serializable result for validation/calculation tasks.
 
@@ -1821,6 +1864,9 @@ class AgentRunner:
         # files land here too (under outputs/), so they're both download-
         # registrable AND visible to later skill scripts in the same run.
         workspace_root = self._get_session_workspace()
+        # Make uploaded files reachable as `uploads/<name>` so scripts can read
+        # them directly instead of the model having to copy content in.
+        self._link_uploads_into_workspace()
 
         # Prepare the output target inside the workspace. Even validation-only
         # scripts receive this path, but they are not required to use it.
@@ -1849,6 +1895,15 @@ class AgentRunner:
             nested_workdir = call_kwargs.pop("workdir", None) or call_kwargs.pop("cwd", None)
             if nested_workdir is not None:
                 workdir = str(nested_workdir)
+        # Positional argv for sys.argv-style scripts. Models often nest it in
+        # kwargs despite the top-level schema.
+        script_args: list[Any] | None = None
+        if args is not None:
+            script_args = args if isinstance(args, list) else [args]
+        else:
+            nested_args = call_kwargs.pop("args", None) or call_kwargs.pop("argv", None)
+            if nested_args is not None:
+                script_args = nested_args if isinstance(nested_args, list) else [nested_args]
 
         # Path-like kwargs whose workspace-relative values get rewritten to
         # absolute paths so scripts (e.g. merge_deck.py) can consume them
@@ -1950,44 +2005,77 @@ class AgentRunner:
         for k in ("output", "output_path", "out", "outfile"):
             call_kwargs.setdefault(k, str(target_path))
 
-        # Dynamically import the script as a fresh module
+        # Try to import the script and call generate()/run(). If the script has
+        # no such entrypoint (plain argparse CLI) or cannot even be imported,
+        # fall back to running it as a subprocess instead of failing the call.
+        # This is why most bundled skill scripts used to be unusable.
+        result: Any = None
+        used_subprocess = False
+        subprocess_info: dict[str, Any] | None = None
+        fallback_reason = ""
+
         mod_name = f"_h3c_skill_{skill}_{script_path.stem}_{_uuid.uuid4().hex[:6]}"
         spec = _ilu.spec_from_file_location(mod_name, script_path)
+        mod = None
         if spec is None or spec.loader is None:
-            return {"error": "failed to load script spec"}
-        mod = _ilu.module_from_spec(spec)
+            fallback_reason = "failed to load script spec"
+        else:
+            mod = _ilu.module_from_spec(spec)
         # Allow the script to import sibling modules from its directory
         _sys.path.insert(0, str(script_path.parent))
         try:
-            try:
-                spec.loader.exec_module(mod)
-            except Exception as e:  # noqa: BLE001
-                return {"error": f"script import failed: {e}"}
-            fn = getattr(mod, "generate", None)
-            fn_name = "generate"
-            if not callable(fn):
-                fn = getattr(mod, "run", None)
-                fn_name = "run"
-            if not callable(fn):
-                return {"error": "script must define a callable `generate(**kwargs)` or `run(**kwargs)`"}
-            # Filter kwargs to only those accepted by the chosen callable.
-            try:
-                sig = _inspect.signature(fn)
-                if not any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                    accepted = {n: v for n, v in call_kwargs.items() if n in sig.parameters}
+            fn = None
+            fn_name = ""
+            if mod is not None and spec is not None and spec.loader is not None:
+                try:
+                    spec.loader.exec_module(mod)
+                except Exception as e:  # noqa: BLE001
+                    fallback_reason = f"import failed: {e}"
                 else:
+                    fn = getattr(mod, "generate", None)
+                    fn_name = "generate"
+                    if not callable(fn):
+                        fn = getattr(mod, "run", None)
+                        fn_name = "run"
+                    if not callable(fn):
+                        fn = None
+                        fallback_reason = "no generate()/run() entrypoint"
+
+            if fn is None:
+                used_subprocess = True
+                subprocess_info = await self._run_skill_script_subprocess(
+                    script_path=script_path,
+                    call_kwargs=call_kwargs,
+                    cwd=call_kwargs.get("cwd") or str(workspace_root),
+                    argv_extra=script_args,
+                )
+                subprocess_info["fallback_reason"] = fallback_reason
+                if subprocess_info.get("error"):
+                    return subprocess_info
+                result = subprocess_info
+            else:
+                # Filter kwargs to only those accepted by the chosen callable.
+                sig = None
+                try:
+                    sig = _inspect.signature(fn)
+                    if not any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                        accepted = {n: v for n, v in call_kwargs.items() if n in sig.parameters}
+                    else:
+                        accepted = call_kwargs
+                except (TypeError, ValueError):
                     accepted = call_kwargs
-            except (TypeError, ValueError):
-                accepted = call_kwargs
-            try:
-                if _asyncio.iscoroutinefunction(fn):
-                    result = await fn(**accepted)
-                else:
-                    result = await _asyncio.to_thread(lambda: fn(**accepted))
-            except TypeError as e:
-                return {"error": f"argument mismatch calling {fn_name}: {e}", "expected_kwargs": list(sig.parameters.keys()) if 'sig' in dir() else None}
-            except Exception as e:  # noqa: BLE001
-                return {"error": f"script execution failed: {e}"}
+                try:
+                    if _asyncio.iscoroutinefunction(fn):
+                        result = await fn(**accepted)
+                    else:
+                        result = await _asyncio.to_thread(lambda: fn(**accepted))
+                except TypeError as e:
+                    return {
+                        "error": f"argument mismatch calling {fn_name}: {e}",
+                        "expected_kwargs": list(sig.parameters.keys()) if sig is not None else None,
+                    }
+                except Exception as e:  # noqa: BLE001
+                    return {"error": f"script execution failed: {e}"}
         finally:
             try:
                 _sys.path.remove(str(script_path.parent))
@@ -2018,6 +2106,10 @@ class AgentRunner:
                 if isinstance(value, str) and _Path(value).exists():
                     produced = _Path(value).resolve()
                     break
+            # CLI scripts run via the subprocess fallback report no path at all;
+            # they just wrote to the --output we injected. Check it directly.
+            if produced is None and target_path.exists():
+                produced = target_path
         elif target_path.exists():
             produced = target_path
 
@@ -2073,6 +2165,168 @@ class AgentRunner:
         info["workspace_files"] = written_files
         self._saved_files.append(info)
         return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示本地文件卡片,无需提供下载链接。"}
+
+    async def _run_skill_script_subprocess(
+        self,
+        script_path,
+        call_kwargs: dict[str, Any],
+        cwd: str,
+        argv_extra: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Run a skill script as a CLI subprocess.
+
+        Used when the script has no importable ``generate()``/``run()``
+        entrypoint — most bundled skill scripts are plain CLI tools.
+
+        Two argv styles are supported:
+        * ``argv_extra`` — explicit positional argv, for scripts that read
+          ``sys.argv`` directly (no argparse).
+        * ``call_kwargs`` — mapped to ``--key value``; booleans become bare
+          flags, None values are dropped. Only flags the script's own argparse
+          declares are passed, so our injected helper kwargs
+          (workspace/cwd/output/...) don't break scripts that never declared
+          them.
+        """
+        import asyncio as _asyncio
+        import os as _os
+        import re as _re
+        import shlex as _shlex
+        import subprocess as _sp
+        import sys as _sys
+
+        # Helper kwargs we inject for the in-process path. A CLI script only
+        # gets these if its argparse declares the matching flag.
+        injected = {"workspace", "workspace_dir", "cwd", "workdir"}
+
+        # Discover which flags the script accepts by scanning its argparse
+        # declarations. Cheap and dependency-free.
+        declared: set[str] = set()
+        uses_argparse = False
+        try:
+            src = script_path.read_text(encoding="utf-8", errors="ignore")
+            uses_argparse = "add_argument(" in src or "ArgumentParser(" in src
+            for m in _re.finditer(r"""add_argument\(\s*["'](--?[\w\-]+)["']""", src):
+                declared.add(m.group(1).lstrip("-").replace("-", "_"))
+        except Exception:  # noqa: BLE001
+            pass
+
+        argv: list[str] = [_sys.executable, str(script_path)]
+        if not argv_extra and not uses_argparse:
+            # Script reads sys.argv directly and we have no positional args to
+            # give it. Guessing flag names would just produce a usage error, so
+            # tell the model exactly what to do instead.
+            meaningful = [k for k in call_kwargs if k not in injected
+                          and k not in {"output", "output_path", "out", "outfile"}]
+            return {
+                "error": (
+                    "该脚本直接读取 sys.argv(无 argparse),需要位置参数。"
+                    "请改用 args 数组按顺序传入命令行参数,"
+                    "例如 args: [\"<路径或参数>\"]。"
+                ),
+                "hint_ignored_kwargs": meaningful,
+            }
+        # Positional args come first; argparse scripts may declare both
+        # positionals and flags (e.g. render_check.py <html> --screenshots dir).
+        if argv_extra:
+            argv.extend(str(a) for a in argv_extra)
+        if uses_argparse:
+            for key, value in call_kwargs.items():
+                if value is None:
+                    continue
+                norm = str(key).replace("-", "_")
+                if declared and norm not in declared:
+                    continue
+                if not declared and norm in injected:
+                    continue
+                flag = "--" + str(key).replace("_", "-")
+                if isinstance(value, bool):
+                    if value:
+                        argv.append(flag)
+                    continue
+                if isinstance(value, (list, tuple)):
+                    argv.append(flag)
+                    argv.extend(str(v) for v in value)
+                    continue
+                if isinstance(value, dict):
+                    import json as _json
+                    argv.extend([flag, _json.dumps(value, ensure_ascii=False)])
+                    continue
+                argv.extend([flag, str(value)])
+
+        # Make the skill's own directory importable so `import helpers` inside
+        # the script keeps working, same as the in-process path.
+        env = dict(_os.environ)
+        existing_pp = env.get("PYTHONPATH") or ""
+        skill_dir = str(script_path.parent)
+        env["PYTHONPATH"] = (
+            f"{skill_dir}{_os.pathsep}{existing_pp}" if existing_pp else skill_dir
+        )
+
+        try:
+            proc = await _asyncio.to_thread(
+                _sp.run,
+                argv,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=env,
+            )
+        except _sp.TimeoutExpired:
+            return {"error": f"script timed out after 300s: {_shlex.join(argv[1:])}"}
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"failed to spawn script: {e}"}
+
+        stdout = (proc.stdout or "")[-8000:]
+        stderr = (proc.stderr or "")[-4000:]
+        if proc.returncode != 0:
+            return {
+                "error": f"script exited with code {proc.returncode}",
+                "exit_code": proc.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+                "argv": _shlex.join(argv[1:]),
+            }
+        return {
+            "ok": True,
+            "mode": "subprocess",
+            "exit_code": 0,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+
+    def _link_uploads_into_workspace(self) -> str | None:
+        """Expose the user's uploads dir inside the session workspace as `uploads/`.
+
+        Skill scripts get `workspace`/`cwd` pointing at the session workspace,
+        but uploaded files live in a completely separate tree (UPLOADS_DIR).
+        That mismatch is why scripts couldn't find user-uploaded files without
+        the model first copying them. A symlink makes `uploads/<name>` resolve
+        for free, with no copying and no extra tokens spent.
+
+        Returns the link path as a string, or None if linking isn't possible
+        (e.g. no upload dir yet, or the filesystem rejects symlinks).
+        """
+        from pathlib import Path as _Path
+        from ..core.config import settings
+
+        try:
+            uploads_root = (_Path(settings.UPLOADS_DIR) / str(self._user_id or "anon")).resolve()
+            if not uploads_root.is_dir():
+                return None
+            link = self._get_session_workspace() / "uploads"
+            if link.is_symlink():
+                # Re-point if it went stale (user id change, moved storage).
+                if link.resolve() == uploads_root:
+                    return str(link)
+                link.unlink()
+            elif link.exists():
+                # A real directory already sits there; leave it alone.
+                return str(link)
+            link.symlink_to(uploads_root, target_is_directory=True)
+            return str(link)
+        except Exception:  # noqa: BLE001
+            return None
 
     async def _read_skill_file(self, skill_code: str, rel_path: str) -> dict[str, Any]:
         from pathlib import Path as _Path
@@ -2349,7 +2603,20 @@ class AgentRunner:
                 body_md = _clip(md, cap)
                 if cap > 0 and chars > cap:
                     head += f" (按 Agent 配置截取至 {cap} 字符)"
-                sections.append(f"{head}\n\n```\n{body_md}\n```")
+                # Even for parsed files, expose the real path: skill scripts may
+                # need the original bytes (xlsx formulas, PDF layout, images)
+                # that markdown extraction throws away.
+                lp = f.get("path") or ""
+                if lp:
+                    from pathlib import Path as _P
+                    try:
+                        lp = str(_P(lp).resolve())
+                    except Exception:
+                        pass
+                block = f"{head}\n\n```\n{body_md}\n```"
+                if lp:
+                    block += f"\n- 原始文件本地路径(需要原始字节时传给 skill 脚本): `{lp}`"
+                sections.append(block)
             elif status == "parsing":
                 sections.append(f"{head}\n\n(文件正在解析中,本轮无法读取内容)")
             elif status == "failed":
@@ -2453,13 +2720,15 @@ class AgentRunner:
         tools = self._build_openai_tools(user_text)
         _ws = (self.ctx.workspace_dir or "").strip()
         # Interactive permission gating (OpenAI-compatible path). Mirror the SDK
-        # path: only meaningful in task mode (a bound, existing workspace dir).
+        # path: task mode uses the agent's configured mode; chat mode now also
+        # has exec tools (scoped to the session workspace), so gate it as "auto"
+        # — edits run silently, run_command still asks.
         if _ws and _os_isdir(_ws):
             self._perm_mode = (self.ctx.permission_mode or "ask").lower()
             self._perm_active = self._perm_mode in ("ask", "auto")
         else:
-            self._perm_mode = "chat"
-            self._perm_active = False
+            self._perm_mode = "auto"
+            self._perm_active = True
         _log.info(
             "[openai-stream] provider=%s model=%s workspace=%s tools=%s",
             (self.ctx.model.provider if self.ctx.model else "?"),
@@ -3102,10 +3371,17 @@ class AgentRunner:
             self._perm_mode = mode
             self._perm_active = mode in ("ask", "auto")
         else:
-            disallowed_tools = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch"]
-            permission_mode = "bypassPermissions"  # auto-approve the safe read-only set
-            self._perm_mode = "chat"
-            self._perm_active = False
+            # Chat mode on desktop: the agent still needs to run skill scripts
+            # and produce artifacts, so Bash/Write/Edit are available — but
+            # scoped to the per-session workspace (set as cwd below) rather
+            # than the user's whole disk. Catastrophic commands stay denied and
+            # HIGH-risk ones still prompt via the can_use_tool callback.
+            from .permissions import CATASTROPHIC_DENY
+            allowed_tools += ["Write", "Edit", "NotebookEdit"]
+            disallowed_tools = list(CATASTROPHIC_DENY)
+            permission_mode = "default"
+            self._perm_mode = "auto"
+            self._perm_active = True
 
         options_kwargs: dict[str, Any] = {
             "model": model.model_id,
@@ -3137,14 +3413,20 @@ class AgentRunner:
         # Working directory:
         #   • Task mode → the user's project dir (so Read/Write/Bash operate there).
         #     Skills are linked into <ws>/.claude/skills via the sandbox merge below.
-        #   • Chat mode → the per-agent skill sandbox (read-only skill discovery).
+        #   • Chat mode → the per-session workspace, with this agent's skills
+        #     linked into its .claude/skills. Bash/Write therefore land in a real
+        #     durable directory whose artifacts are download-registrable, and
+        #     uploaded files are reachable as uploads/<name>.
         if is_task:
             options_kwargs["cwd"] = ws_dir
             options_kwargs["setting_sources"] = ["project"]
             self._link_skills_into(ws_dir, sandbox)
-        elif sandbox is not None:
-            options_kwargs["cwd"] = str(sandbox)
+        else:
+            session_ws = self._get_session_workspace()
+            self._link_uploads_into_workspace()
+            options_kwargs["cwd"] = str(session_ws)
             options_kwargs["setting_sources"] = ["project"]
+            self._link_skills_into(str(session_ws), sandbox)
         if model.api_key_enc:
             options_kwargs["api_key"] = decrypt_str(model.api_key_enc)
         if model.base_url:
